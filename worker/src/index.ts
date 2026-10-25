@@ -1,4 +1,12 @@
 import webpush from 'web-push';
+import { authenticateDevice, registerDevice } from './auth';
+import {
+  AiError,
+  analyzeMealImage,
+  chatWithCoach,
+  parseMealDescription,
+  recipeIdea
+} from './ai';
 import {
   barcodeCacheKey,
   checkRateLimit,
@@ -6,9 +14,23 @@ import {
   searchCacheKey,
   writeCache
 } from './cache';
+import { sha256Hex } from './crypto';
 import { dedupeFoods, rankFoods } from './normalize';
 import { lookupOffBarcode, searchOff } from './providers/off';
 import { searchUsda } from './providers/usda';
+import {
+  SmsServiceError,
+  deleteSmsPrefs,
+  saveSmsPrefs,
+  sendDueSms,
+  sendTestSms
+} from './sms';
+import {
+  SyncError,
+  deleteSnapshot,
+  loadSnapshot,
+  saveSnapshot
+} from './sync';
 import type {
   Env,
   ExecutionContextLike,
@@ -43,8 +65,8 @@ function corsHeaders(request: Request, env: Env): Record<string, string> | null 
 
   return {
     'Access-Control-Allow-Origin': origin ?? origins[0] ?? '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-CalAI-Device',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-CalAI-Device, Authorization',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin'
   };
@@ -73,6 +95,44 @@ function errorResponse(
   headers: Record<string, string>
 ): Response {
   return json({ error: message }, status, headers);
+}
+
+class HttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+    this.name = 'HttpError';
+  }
+}
+
+async function readJson(request: Request, maxChars = 100_000): Promise<unknown> {
+  const length = Number(request.headers.get('Content-Length') ?? '0');
+  if (Number.isFinite(length) && length > maxChars) {
+    throw new HttpError('Request body is too large.', 413);
+  }
+
+  const raw = await request.text();
+  if (raw.length > maxChars) {
+    throw new HttpError('Request body is too large.', 413);
+  }
+  if (!raw.trim()) return {};
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new HttpError('Invalid JSON.', 400);
+  }
+}
+
+function errorStatus(error: unknown): { message: string; status: number } | null {
+  if (error instanceof HttpError) {
+    return { message: error.message, status: error.status };
+  }
+  if (error instanceof AiError || error instanceof SyncError || error instanceof SmsServiceError) {
+    return { message: error.message, status: error.status };
+  }
+  return null;
 }
 
 async function handleSearch(
@@ -187,16 +247,6 @@ async function handleBarcode(
   } catch {
     return errorResponse('Barcode lookup is unavailable right now.', 502, headers);
   }
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(value)
-  );
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 async function pushKey(endpoint: string): Promise<string> {
@@ -368,6 +418,96 @@ async function handlePushUnsubscribe(
   return json({ ok: true }, 200, headers);
 }
 
+async function handleRegister(
+  request: Request,
+  env: Env,
+  headers: Record<string, string>
+): Promise<Response> {
+  const deviceId = (request.headers.get('X-CalAI-Device') ?? '').trim();
+  const result = await registerDevice(env, request, deviceId);
+  if ('error' in result) return errorResponse(result.error, result.status, headers);
+  return json({ token: result.token }, 200, headers);
+}
+
+async function handleSync(
+  request: Request,
+  env: Env,
+  headers: Record<string, string>
+): Promise<Response> {
+  const auth = await authenticateDevice(env, request);
+  if (!auth.ok) return errorResponse(auth.error, auth.status, headers);
+
+  if (request.method === 'GET') {
+    const snapshot = await loadSnapshot(env, auth.deviceId);
+    if (!snapshot) {
+      return errorResponse('No cloud backup was found for this device.', 404, headers);
+    }
+    return json(snapshot, 200, headers);
+  }
+
+  if (request.method === 'PUT') {
+    const body = await readJson(request, 1_200_000);
+    const result = await saveSnapshot(env, auth.deviceId, body);
+    return json({ ok: true, ...result }, 200, headers);
+  }
+
+  if (request.method === 'DELETE') {
+    await deleteSnapshot(env, auth.deviceId);
+    return json({ ok: true }, 200, headers);
+  }
+
+  return errorResponse('Method not allowed.', 405, headers);
+}
+
+async function handleAi(
+  request: Request,
+  env: Env,
+  headers: Record<string, string>,
+  kind: 'recognize' | 'parse' | 'chat' | 'recipes'
+): Promise<Response> {
+  const limit = kind === 'recognize' ? 8_600_000 : 80_000;
+  const body = await readJson(request, limit);
+
+  if (kind === 'recognize') {
+    return json(await analyzeMealImage(env, request, body), 200, headers);
+  }
+  if (kind === 'parse') {
+    return json(await parseMealDescription(env, request, body), 200, headers);
+  }
+  if (kind === 'chat') {
+    return json(await chatWithCoach(env, request, body), 200, headers);
+  }
+  return json(await recipeIdea(env, request, body), 200, headers);
+}
+
+async function handleSms(
+  request: Request,
+  env: Env,
+  headers: Record<string, string>
+): Promise<Response> {
+  const auth = await authenticateDevice(env, request);
+  if (!auth.ok) return errorResponse(auth.error, auth.status, headers);
+
+  if (request.method === 'POST' && new URL(request.url).pathname === '/v1/sms/prefs') {
+    const body = await readJson(request, 12_000);
+    await saveSmsPrefs(env, auth.deviceId, body);
+    return json({ ok: true }, 200, headers);
+  }
+
+  if (request.method === 'DELETE' && new URL(request.url).pathname === '/v1/sms/prefs') {
+    await deleteSmsPrefs(env, auth.deviceId);
+    return json({ ok: true }, 200, headers);
+  }
+
+  if (request.method === 'POST' && new URL(request.url).pathname === '/v1/sms/test') {
+    const result = await sendTestSms(env, auth.deviceId);
+    return json({ ok: true, ...result }, 200, headers);
+  }
+
+  return errorResponse('Method not allowed.', 405, headers);
+}
+
+
 export default {
   async fetch(
     request: Request,
@@ -388,28 +528,87 @@ export default {
 
     const url = new URL(request.url);
 
-    if (request.method === 'GET' && url.pathname === '/health') {
-      return json({ ok: true, search: true }, 200, headers);
-    }
+    try {
+      if (request.method === 'GET' && url.pathname === '/health') {
+        return json(
+          {
+            ok: true,
+            search: true,
+            ai: Boolean(env.DEEPSEEK_API_KEY),
+            sync: Boolean(env.DB && env.DATA_ENC_KEY),
+            sms: Boolean(env.TEXTBELT_API_KEY && env.DB && env.DATA_ENC_KEY),
+            push: Boolean(
+              env.CALAI_CACHE && env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY
+            )
+          },
+          200,
+          headers
+        );
+      }
 
-    if (request.method === 'GET' && url.pathname === '/v1/foods/search') {
-      return handleSearch(request, env, ctx, headers);
-    }
+      if (request.method === 'GET' && url.pathname === '/v1/foods/search') {
+        return await handleSearch(request, env, ctx, headers);
+      }
 
-    const barcodeMatch = /^\/v1\/foods\/barcode\/(\d{8,14})$/.exec(url.pathname);
-    if (request.method === 'GET' && barcodeMatch?.[1]) {
-      return handleBarcode(request, env, ctx, headers, barcodeMatch[1]);
-    }
+      const barcodeMatch = /^\/v1\/foods\/barcode\/(\d{8,14})$/.exec(url.pathname);
+      if (request.method === 'GET' && barcodeMatch?.[1]) {
+        return await handleBarcode(request, env, ctx, headers, barcodeMatch[1]);
+      }
 
-    if (request.method === 'POST' && url.pathname === '/v1/push/subscribe') {
-      return handlePushSubscribe(request, env, headers);
-    }
+      if (request.method === 'POST' && url.pathname === '/v1/push/subscribe') {
+        return await handlePushSubscribe(request, env, headers);
+      }
 
-    if (request.method === 'POST' && url.pathname === '/v1/push/unsubscribe') {
-      return handlePushUnsubscribe(request, env, headers);
-    }
+      if (request.method === 'POST' && url.pathname === '/v1/push/unsubscribe') {
+        return await handlePushUnsubscribe(request, env, headers);
+      }
 
-    return errorResponse('Not found.', 404, headers);
+      if (request.method === 'POST' && url.pathname === '/v1/auth/register') {
+        return await handleRegister(request, env, headers);
+      }
+
+      if (
+        url.pathname === '/v1/sync' &&
+        (request.method === 'GET' ||
+          request.method === 'PUT' ||
+          request.method === 'DELETE')
+      ) {
+        return await handleSync(request, env, headers);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/ai/recognize') {
+        return await handleAi(request, env, headers, 'recognize');
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/ai/parse') {
+        return await handleAi(request, env, headers, 'parse');
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/ai/chat') {
+        return await handleAi(request, env, headers, 'chat');
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/ai/recipes') {
+        return await handleAi(request, env, headers, 'recipes');
+      }
+
+      if (
+        (request.method === 'POST' || request.method === 'DELETE') &&
+        url.pathname === '/v1/sms/prefs'
+      ) {
+        return await handleSms(request, env, headers);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/sms/test') {
+        return await handleSms(request, env, headers);
+      }
+
+      return errorResponse('Not found.', 404, headers);
+    } catch (error) {
+      const known = errorStatus(error);
+      if (known) return errorResponse(known.message, known.status, headers);
+      return errorResponse('Something went wrong.', 500, headers);
+    }
   },
 
   async scheduled(
@@ -418,14 +617,11 @@ export default {
     _ctx: ExecutionContextLike
   ): Promise<void> {
     if (
-      !env.CALAI_CACHE ||
-      !env.VAPID_PUBLIC_KEY ||
-      !env.VAPID_PRIVATE_KEY
+      env.CALAI_CACHE &&
+      env.VAPID_PUBLIC_KEY &&
+      env.VAPID_PRIVATE_KEY
     ) {
-      return;
-    }
-
-    webpush.setVapidDetails(
+      webpush.setVapidDetails(
       env.VAPID_SUBJECT ?? 'mailto:calai@example.invalid',
       env.VAPID_PUBLIC_KEY,
       env.VAPID_PRIVATE_KEY
@@ -482,7 +678,13 @@ export default {
 
       cursor = page.list_complete ? undefined : page.cursor;
     } while (cursor);
+    }
 
+    try {
+      await sendDueSms(env, event.scheduledTime);
+    } catch {
+      // SMS is best effort. A failure is retried on the next five-minute tick.
+    }
   }
 };
 

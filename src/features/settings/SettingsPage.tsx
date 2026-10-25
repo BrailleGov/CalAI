@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { SCHEMA_VERSION } from '../../types';
-import type { PersistedData, Reminder, ReminderSettings } from '../../types';
+import type { Reminder, ReminderSettings } from '../../types';
 import { ACTIVITY_LABELS, GOAL_LABELS, MEAL_LABELS } from '../../types';
-import { useAppStore, resetPersistedState } from '../../store/useAppStore';
+import {
+  getPersistedData,
+  useAppStore,
+  resetPersistedState
+} from '../../store/useAppStore';
 import { useToast } from '../../components/Toast';
-import { buildBackup, parseBackup } from '../../lib/backup';
+import { buildBackup, parseBackup, redactForExport } from '../../lib/backup';
 import { formatHeight, formatWeight } from '../../lib/format';
 import { todayKey } from '../../lib/dates';
 import { buildReminderIcs } from '../../lib/reminders';
@@ -17,6 +20,10 @@ import {
   syncPushReminders,
   unsubscribeFromPush
 } from '../../lib/push';
+import { PersonalizationSection } from './PersonalizationSection';
+import { CloudBackupSection } from './CloudBackupSection';
+import { SmsSettings } from './SmsSettings';
+import { SMS_CONFIGURED, disableSms } from '../../lib/sms';
 import {
   IconBell,
   IconDownload,
@@ -183,23 +190,7 @@ export function SettingsPage() {
   }
 
   function handleExport() {
-    const state = useAppStore.getState();
-    const data: PersistedData = {
-      schemaVersion: SCHEMA_VERSION,
-      onboarded: state.onboarded,
-      profile: state.profile,
-      targets: state.targets,
-      customFoods: state.customFoods,
-      remoteFoods: state.remoteFoods,
-      entries: state.entries,
-      favorites: state.favorites,
-      recentFoodIds: state.recentFoodIds,
-      recipes: state.recipes,
-      weights: state.weights,
-      water: state.water,
-      reminders: state.reminders,
-      settings: state.settings
-    };
+    const data = redactForExport(getPersistedData());
     const backup = buildBackup(data);
     const blob = new Blob([JSON.stringify(backup, null, 2)], {
       type: 'application/json'
@@ -232,11 +223,25 @@ export function SettingsPage() {
     );
     if (!confirmed) return;
 
-    importData(result.data);
+    const localSms = useAppStore.getState().sms;
+    importData({
+      ...result.data,
+      sms: localSms,
+      cloudSync: { enabled: false, lastSyncedAt: null }
+    });
     toast('Backup imported');
   }
 
-  function handleReset() {
+  async function handleReset() {
+    const state = useAppStore.getState();
+    if (SMS_CONFIGURED && state.sms.enabled) {
+      try {
+        await disableSms();
+      } catch {
+        toast('Could not turn off SMS. Try again before resetting.');
+        return;
+      }
+    }
     resetPersistedState();
     setConfirmReset(false);
     toast('All local data cleared');
@@ -356,6 +361,8 @@ export function SettingsPage() {
           </button>
         </div>
       </section>
+
+      <PersonalizationSection />
 
       <section className="settings-section" aria-labelledby="reminders-heading">
         <div className="card-head card-head-flush">
@@ -484,6 +491,8 @@ export function SettingsPage() {
         </div>
       </section>
 
+      <SmsSettings />
+
       <section className="settings-section" aria-labelledby="appearance-heading">
         <div className="card-head card-head-flush">
           <h2 id="appearance-heading">Appearance</h2>
@@ -561,23 +570,25 @@ export function SettingsPage() {
             </div>
           </dl>
           <p className="fine-print">
-            These stats set the starting targets. Adjust the numbers above any time; rerunning
-            setup is not yet available in this alpha.
+            These stats feed the target estimate and AI context. Use Personalization above to
+            update them; daily targets stay under your control.
           </p>
         </section>
       ) : null}
 
+      <CloudBackupSection />
+
       <section className="settings-section" aria-labelledby="data-heading">
         <div className="card-head card-head-flush">
           <h2 id="data-heading">Data</h2>
-          <span className="card-note">Local only</span>
+          <span className="card-note">Local first</span>
         </div>
         <div className="card settings-card">
           <button type="button" className="settings-action" onClick={handleExport}>
             <IconDownload size={18} />
             <span>
               <strong>Export backup</strong>
-              <small>Download a JSON file of everything</small>
+              <small>Download a JSON file; your SMS number is excluded</small>
             </span>
           </button>
 
@@ -636,7 +647,7 @@ export function SettingsPage() {
       <section className="settings-section" aria-labelledby="about-heading">
         <div className="card-head card-head-flush">
           <h2 id="about-heading">About</h2>
-          <span className="card-note">v0.2.0 alpha</span>
+          <span className="card-note">v0.3.0 alpha</span>
         </div>
         <div className="card about-card">
           <p>
@@ -644,13 +655,13 @@ export function SettingsPage() {
             you eat.
           </p>
           <p className="about-planned">
-            <IconSparkles size={16} /> New in v0.2: online food search, barcode lookup,
-            recipes, weight, water, and reminders. Planned next: photo and text logging,
-            and a chat that answers questions about your own data.
+            <IconSparkles size={16} /> New in v0.3: photo and text logging, an AI coach, a recipe
+            book, personalized goals, encrypted cloud backup, and optional SMS reminders.
           </p>
           <p className="about-meta">
             Online food data: openfoodfacts.org (ODbL) and USDA FoodData Central (public
-            domain). Values are estimates.
+            domain). AI estimates come from DeepSeek and are not medical advice. Values are
+            estimates.
           </p>
           <a
             className="text-link"

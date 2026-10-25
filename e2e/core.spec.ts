@@ -15,8 +15,9 @@ test.describe('core diary flows', () => {
   test('onboards with imperial units and converts to metric storage', async ({ page }) => {
     await completeOnboarding(page, { units: 'imperial' });
     await page.getByRole('link', { name: 'Settings', exact: true }).click();
-    await expect(page.getByText('175 cm')).toBeVisible();
-    await expect(page.getByText('77.1 kg')).toBeVisible();
+    const stats = page.getByRole('region', { name: 'Your stats' });
+    await expect(stats.getByText('175 cm')).toBeVisible();
+    await expect(stats.getByText('77.1 kg')).toBeVisible();
   });
 
   test('logs a seeded food, updates totals, and survives a reload', async ({ page }) => {

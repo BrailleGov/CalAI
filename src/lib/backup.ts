@@ -1,29 +1,67 @@
 import { MEALS, SCHEMA_VERSION } from '../types';
 import type {
   BackupFile,
+  ChatMessage,
+  CloudSyncSettings,
   Entry,
   Food,
+  FoodCategory,
+  MuscleFocus,
   Nutrients,
   PersistedData,
+  Preferences,
   Profile,
   Recipe,
   RecipeIngredient,
+  RecipeSource,
   Reminder,
   ReminderSettings,
   Settings,
+  SmsPreferences,
   Targets,
   WaterEntry,
   WeightEntry
 } from '../types';
 import { DEFAULT_REMINDER_SETTINGS } from '../types';
+import {
+  normalizeChatMessages,
+  normalizeCloudSync,
+  normalizeMuscleFocus,
+  normalizePreferences,
+  normalizeSms
+} from './preferences';
 import { isValidDayKey } from './dates';
 
 const FOOD_SOURCES = ['seed', 'custom', 'off', 'usda', 'recipe'] as const;
+const FOOD_CATEGORY_VALUES = [
+  'protein',
+  'dairy',
+  'grains',
+  'fruit',
+  'vegetables',
+  'fats',
+  'drinks',
+  'meals',
+  'snacks',
+  'condiments'
+] as const;
 const ACTIVITIES = ['sedentary', 'light', 'moderate', 'active', 'very_active'] as const;
 const GOALS = ['lose', 'maintain', 'gain'] as const;
 const SEXES = ['female', 'male', 'unspecified'] as const;
 const THEMES = ['dark', 'light', 'system'] as const;
 const UNIT_OPTIONS = ['metric', 'imperial'] as const;
+const TRACKING_STYLES = ['quick', 'detailed'] as const;
+const DIET_PATTERNS = [
+  'no_preference',
+  'omnivore',
+  'vegetarian',
+  'vegan',
+  'pescatarian',
+  'halal',
+  'kosher',
+  'other'
+] as const;
+const RECIPE_SOURCES = ['user', 'ai', 'curated'] as const;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 type Result = { ok: true; data: PersistedData } | { ok: false; error: string };
@@ -65,7 +103,9 @@ function isFood(value: unknown): value is Food {
     isNumber(value.createdAt, 0, Number.MAX_SAFE_INTEGER) &&
     (value.brand === undefined || typeof value.brand === 'string') &&
     (value.barcode === undefined || typeof value.barcode === 'string') &&
-    (value.servingGrams === undefined || isNumber(value.servingGrams, 0, 100000))
+    (value.servingGrams === undefined || isNumber(value.servingGrams, 0, 100000)) &&
+    (value.category === undefined ||
+      FOOD_CATEGORY_VALUES.includes(value.category as FoodCategory))
   );
 }
 
@@ -95,6 +135,16 @@ function isTargets(value: unknown): value is Targets {
   );
 }
 
+function isMuscleFocus(value: unknown): value is MuscleFocus {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(
+    ([key, entry]) =>
+      ['chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'legs'].includes(key) &&
+      isNumber(entry, 0, 100)
+  );
+}
+
 function isProfile(value: unknown): value is Profile {
   if (!isRecord(value)) return false;
   return (
@@ -104,12 +154,66 @@ function isProfile(value: unknown): value is Profile {
     isNumber(value.weightKg, 10, 500) &&
     ACTIVITIES.includes(value.activity as (typeof ACTIVITIES)[number]) &&
     GOALS.includes(value.goal as (typeof GOALS)[number]) &&
-    isNumber(value.rateKgPerWeek, 0, 2)
+    isNumber(value.rateKgPerWeek, 0, 2) &&
+    (value.targetWeightKg === undefined || isNumber(value.targetWeightKg, 30, 300)) &&
+    isMuscleFocus(value.muscleFocus)
   );
 }
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isPreferences(value: unknown): value is Preferences {
+  if (!isRecord(value)) return false;
+  return (
+    TRACKING_STYLES.includes(value.trackingStyle as (typeof TRACKING_STYLES)[number]) &&
+    typeof value.photoLogging === 'boolean' &&
+    typeof value.textLogging === 'boolean' &&
+    typeof value.aiChat === 'boolean' &&
+    typeof value.recipeIdeas === 'boolean' &&
+    (value.aiConsentAt === null || isNumber(value.aiConsentAt, 1, Number.MAX_SAFE_INTEGER)) &&
+    DIET_PATTERNS.includes(value.diet as (typeof DIET_PATTERNS)[number]) &&
+    isStringArray(value.avoidIngredients) &&
+    value.avoidIngredients.length <= 20 &&
+    value.avoidIngredients.every((item) => item.length >= 2 && item.length <= 40) &&
+    isStringArray(value.cuisines) &&
+    value.cuisines.length <= 6 &&
+    value.cuisines.every((item) => item.length >= 2 && item.length <= 40)
+  );
+}
+
+function isSms(value: unknown): value is SmsPreferences {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.enabled === 'boolean' &&
+    typeof value.phone === 'string' &&
+    value.phone.length <= 24 &&
+    (value.consentAt === null || isNumber(value.consentAt, 1, Number.MAX_SAFE_INTEGER)) &&
+    (value.lastTestAt === undefined ||
+      isNumber(value.lastTestAt, 1, Number.MAX_SAFE_INTEGER))
+  );
+}
+
+function isCloudSync(value: unknown): value is CloudSyncSettings {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.enabled === 'boolean' &&
+    (value.lastSyncedAt === null ||
+      isNumber(value.lastSyncedAt, 1, Number.MAX_SAFE_INTEGER))
+  );
+}
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  if (!isRecord(value)) return false;
+  return (
+    isText(value.id) &&
+    (value.role === 'user' || value.role === 'assistant') &&
+    isText(value.content, 4000) &&
+    isNumber(value.createdAt, 0, Number.MAX_SAFE_INTEGER) &&
+    (value.window === undefined || typeof value.window === 'string') &&
+    (value.error === undefined || typeof value.error === 'boolean')
+  );
 }
 
 function isRecipeIngredient(value: unknown): value is RecipeIngredient {
@@ -120,6 +224,15 @@ function isRecipeIngredient(value: unknown): value is RecipeIngredient {
     isText(value.servingLabel) &&
     isNumber(value.quantity, 0.01, 1000) &&
     isNutrients(value.nutrients)
+  );
+}
+
+function isStringList(value: unknown, maxItems: number, maxLength: number): value is string[] {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.length <= maxItems &&
+      value.every((item) => typeof item === 'string' && item.length <= maxLength))
   );
 }
 
@@ -134,7 +247,13 @@ function isRecipe(value: unknown): value is Recipe {
     value.ingredients.length <= 100 &&
     value.ingredients.every(isRecipeIngredient) &&
     isNumber(value.createdAt, 0, Number.MAX_SAFE_INTEGER) &&
-    isNumber(value.updatedAt, 0, Number.MAX_SAFE_INTEGER)
+    isNumber(value.updatedAt, 0, Number.MAX_SAFE_INTEGER) &&
+    (value.description === undefined ||
+      (typeof value.description === 'string' && value.description.length <= 1000)) &&
+    isStringList(value.instructions, 30, 500) &&
+    isStringList(value.tags, 12, 40) &&
+    (value.source === undefined ||
+      RECIPE_SOURCES.includes(value.source as RecipeSource))
   );
 }
 
@@ -210,31 +329,48 @@ function validateBaseFields(value: Record<string, unknown>, version: number): st
   return null;
 }
 
-function migrateV1(value: Record<string, unknown>): PersistedData {
+function defaultReminders(): ReminderSettings {
+  return {
+    ...DEFAULT_REMINDER_SETTINGS,
+    items: DEFAULT_REMINDER_SETTINGS.items.map((item) => ({ ...item }))
+  };
+}
+
+function migrateV1(value: Record<string, unknown>): Record<string, unknown> {
   const settings = value.settings as { theme: Settings['theme']; units: Settings['units'] };
   return {
-    schemaVersion: SCHEMA_VERSION,
-    onboarded: value.onboarded as boolean,
-    profile: value.profile as Profile | null,
-    targets: value.targets as Targets,
-    customFoods: value.customFoods as Food[],
+    ...value,
+    schemaVersion: 2,
     remoteFoods: [],
-    entries: value.entries as Entry[],
-    favorites: value.favorites as string[],
-    recentFoodIds: value.recentFoodIds as string[],
     recipes: [],
     weights: [],
     water: [],
-    reminders: {
-      ...DEFAULT_REMINDER_SETTINGS,
-      items: DEFAULT_REMINDER_SETTINGS.items.map((item) => ({ ...item }))
-    },
+    reminders: defaultReminders(),
     settings: { ...settings, waterGoalMl: 2000 }
   };
 }
 
-function validateV2(value: Record<string, unknown>): Result {
-  const baseError = validateBaseFields(value, 2);
+function migrateV2(value: Record<string, unknown>): PersistedData {
+  const rawProfile = value.profile as Profile | null;
+  const muscleFocus = rawProfile ? normalizeMuscleFocus(rawProfile.muscleFocus) : undefined;
+  return {
+    ...(value as unknown as PersistedData),
+    schemaVersion: SCHEMA_VERSION,
+    profile: rawProfile
+      ? {
+          ...rawProfile,
+          ...(muscleFocus ? { muscleFocus } : {})
+        }
+      : null,
+    preferences: normalizePreferences(value.preferences),
+    sms: normalizeSms(value.sms),
+    cloudSync: normalizeCloudSync(value.cloudSync),
+    chatMessages: normalizeChatMessages(value.chatMessages)
+  };
+}
+
+function validateCurrent(value: Record<string, unknown>): Result {
+  const baseError = validateBaseFields(value, SCHEMA_VERSION);
   if (baseError) return { ok: false, error: baseError };
 
   if (!Array.isArray(value.remoteFoods) || !value.remoteFoods.every(isFood)) {
@@ -252,6 +388,18 @@ function validateV2(value: Record<string, unknown>): Result {
   if (!isReminderSettings(value.reminders)) {
     return { ok: false, error: 'Reminder settings are invalid.' };
   }
+  if (!isPreferences(value.preferences)) {
+    return { ok: false, error: 'Personalization preferences are invalid.' };
+  }
+  if (!isSms(value.sms)) {
+    return { ok: false, error: 'SMS preferences are invalid.' };
+  }
+  if (!isCloudSync(value.cloudSync)) {
+    return { ok: false, error: 'Cloud backup settings are invalid.' };
+  }
+  if (!Array.isArray(value.chatMessages) || !value.chatMessages.every(isChatMessage)) {
+    return { ok: false, error: 'Assistant history is invalid.' };
+  }
 
   return { ok: true, data: value as unknown as PersistedData };
 }
@@ -264,11 +412,32 @@ export function validatePersistedData(value: unknown): Result {
   if (value.schemaVersion === 1) {
     const baseError = validateBaseFields(value, 1);
     if (baseError) return { ok: false, error: baseError };
-    return { ok: true, data: migrateV1(value) };
+    return { ok: true, data: migrateV2(migrateV1(value)) };
+  }
+
+  if (value.schemaVersion === 2) {
+    const baseError = validateBaseFields(value, 2);
+    if (baseError) return { ok: false, error: baseError };
+    if (!Array.isArray(value.remoteFoods) || !value.remoteFoods.every(isFood)) {
+      return { ok: false, error: 'Remote foods are invalid.' };
+    }
+    if (!Array.isArray(value.recipes) || !value.recipes.every(isRecipe)) {
+      return { ok: false, error: 'Recipes are invalid.' };
+    }
+    if (!Array.isArray(value.weights) || !value.weights.every(isWeightEntry)) {
+      return { ok: false, error: 'Weight entries are invalid.' };
+    }
+    if (!Array.isArray(value.water) || !value.water.every(isWaterEntry)) {
+      return { ok: false, error: 'Water entries are invalid.' };
+    }
+    if (!isReminderSettings(value.reminders)) {
+      return { ok: false, error: 'Reminder settings are invalid.' };
+    }
+    return { ok: true, data: migrateV2(value) };
   }
 
   if (value.schemaVersion === SCHEMA_VERSION) {
-    return validateV2(value);
+    return validateCurrent(value);
   }
 
   return { ok: false, error: 'Unsupported backup version.' };
@@ -280,6 +449,18 @@ export function buildBackup(data: PersistedData): BackupFile {
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     data
+  };
+}
+
+/** Phone numbers are intentionally excluded from downloadable backups. */
+export function redactForExport(data: PersistedData): PersistedData {
+  return {
+    ...data,
+    sms: {
+      enabled: false,
+      phone: '',
+      consentAt: null
+    }
   };
 }
 

@@ -313,19 +313,34 @@ export async function lookupBarcode(
   return barcodeOffDirect(code, signal);
 }
 
+function newDeviceToken(): string {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function getDeviceToken(): string {
   try {
     const existing = localStorage.getItem(DEVICE_KEY);
     if (existing && existing.length >= 8) return existing;
-    const token =
-      typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const token = newDeviceToken();
     localStorage.setItem(DEVICE_KEY, token);
     return token;
   } catch {
     return '';
   }
+}
+
+/** Used when a device ID exists server-side but its local bearer token was lost. */
+export function rotateDeviceToken(): string {
+  const token = newDeviceToken();
+  try {
+    localStorage.setItem(DEVICE_KEY, token);
+    localStorage.removeItem('calai:sync-token');
+  } catch {
+    // Storage is blocked; the caller will report that cloud backup cannot be linked.
+  }
+  return token;
 }
 
 export function isRemoteSource(source: Food['source']): boolean {

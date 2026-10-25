@@ -1,12 +1,17 @@
 name = "calai-api"
 main = "src/index.ts"
-compatibility_date = "2025-10-01"
+compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 [vars]
 ALLOWED_ORIGINS = "https://braillegov.github.io,http://localhost:5173,http://localhost:4173"
 DAILY_SEARCH_LIMIT = "300"
+AI_DAILY_RECOGNIZE = "10"
+AI_DAILY_PARSE = "40"
+AI_DAILY_CHAT = "60"
+AI_DAILY_RECIPE = "20"
+AI_MONTHLY_REQUEST_CAP = "5000"
 
 [triggers]
 crons = ["*/5 * * * *"]
@@ -15,10 +20,20 @@ crons = ["*/5 * * * *"]
 # Then paste the returned id here. Caching is optional but strongly recommended.
 [[kv_namespaces]]
 binding = "CALAI_CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "4720c88208744717a583112e89def60f"
 
-# Secrets (never commit):
+# Create with: npx wrangler d1 create calai
+# Then paste the returned database_id here. Required for cloud backup and SMS.
+[[d1_databases]]
+binding = "DB"
+database_name = "calai"
+database_id = "8d689615-14b6-4951-84d4-651d92eb0970"
+
+# Secrets (never commit; use `wrangler secret put` in production):
 #   npx wrangler secret put USDA_API_KEY
 #   npx wrangler secret put VAPID_PUBLIC_KEY
 #   npx wrangler secret put VAPID_PRIVATE_KEY
 #   npx wrangler secret put VAPID_SUBJECT
+#   npx wrangler secret put DEEPSEEK_API_KEY
+#   npx wrangler secret put TEXTBELT_API_KEY
+#   npx wrangler secret put DATA_ENC_KEY   # openssl rand -base64 32

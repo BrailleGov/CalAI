@@ -13,3 +13,8 @@ Thumbs.db
 desktop.ini
 *.log
 .tmp/
+
+.dev.vars
+.dev.vars.*
+.wrangler/
+worker/.wrangler/

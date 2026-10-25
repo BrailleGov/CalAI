@@ -1,18 +1,39 @@
 import { useMemo, useState } from 'react';
-import type { ActivityLevel, Goal, Profile, Sex, Targets, Units } from '../../types';
+import type {
+  ActivityLevel,
+  DietPattern,
+  Goal,
+  MuscleFocus,
+  MuscleGroup,
+  Preferences,
+  Profile,
+  Sex,
+  Targets,
+  Units
+} from '../../types';
 import {
   ACTIVITY_HINTS,
   ACTIVITY_LABELS,
+  CUISINE_OPTIONS,
+  DEFAULT_PREFERENCES,
+  DIET_LABELS,
+  DIET_PATTERNS,
   GOAL_LABELS,
-  SEX_LABELS
+  MUSCLE_GROUPS,
+  MUSCLE_LABELS,
+  SEX_LABELS,
+  TRACKING_STYLES,
+  TRACKING_STYLE_LABELS
 } from '../../types';
 import { Brand } from '../../components/Brand';
 import { StorageWarning } from '../../components/StorageWarning';
+import { Slider } from '../../components/Slider';
+import { ToggleRow } from '../../components/ToggleRow';
 import { calculateTargets, maintenanceCalories } from '../../lib/nutrition';
 import {
   centimetresToInches,
+  clamp,
   formatNumber,
-  inchesToCentimetres,
   kilogramsToPounds,
   poundsToKilograms
 } from '../../lib/format';
@@ -20,7 +41,10 @@ import { useAppStore } from '../../store/useAppStore';
 
 type Errors = Record<string, string>;
 
-const RATE_OPTIONS = [0.25, 0.5, 0.75];
+const STEP_COUNT = 4;
+const RATE_MIN = 0.1;
+const RATE_MAX = 1;
+const RATE_STEP = 0.05;
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
@@ -31,12 +55,36 @@ function FieldError({ message }: { message?: string }) {
   );
 }
 
+function emptyMuscleFocus(): Record<MuscleGroup, number> {
+  return MUSCLE_GROUPS.reduce(
+    (focus, group) => ({ ...focus, [group]: 0 }),
+    {} as Record<MuscleGroup, number>
+  );
+}
+
+function parseList(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length >= 2 && item.length <= 40)
+    )
+  ].slice(0, 20);
+}
+
 export function Onboarding() {
   const completeOnboarding = useAppStore((state) => state.completeOnboarding);
 
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState<Goal>('lose');
   const [rate, setRate] = useState(0.5);
+  const [targetWeightEnabled, setTargetWeightEnabled] = useState(false);
+  const [targetWeightKg, setTargetWeightKg] = useState(70);
+  const [muscleEnabled, setMuscleEnabled] = useState(false);
+  const [muscleFocus, setMuscleFocus] = useState<Record<MuscleGroup, number>>(
+    emptyMuscleFocus()
+  );
   const [sex, setSex] = useState<Sex>('unspecified');
   const [age, setAge] = useState('');
   const [activity, setActivity] = useState<ActivityLevel>('moderate');
@@ -52,6 +100,18 @@ export function Onboarding() {
   const [targetProtein, setTargetProtein] = useState('');
   const [targetCarbs, setTargetCarbs] = useState('');
   const [targetFat, setTargetFat] = useState('');
+  const [preferences, setPreferences] = useState<Preferences>({
+    ...DEFAULT_PREFERENCES,
+    avoidIngredients: [],
+    cuisines: []
+  });
+  const [avoidText, setAvoidText] = useState('');
+  const [aiConsent, setAiConsent] = useState(false);
+
+  const currentWeightKg = useMemo(() => {
+    if (units === 'metric') return Number(weightKg);
+    return poundsToKilograms(Number(pounds));
+  }, [pounds, units, weightKg]);
 
   const profile = useMemo<Profile | null>(() => {
     const numericAge = Number(age);
@@ -67,12 +127,19 @@ export function Onboarding() {
       const feetValue = Number(feet);
       const inchValue = Number(inches);
       const poundValue = Number(pounds);
-      height = inchesToCentimetres(feetValue * 12 + inchValue);
+      height = (feetValue * 12 + inchValue) * 2.54;
       weight = poundsToKilograms(poundValue);
     }
 
     if (!Number.isFinite(height) || !Number.isFinite(weight) || height <= 0 || weight <= 0) {
       return null;
+    }
+
+    const focus: MuscleFocus = {};
+    if (muscleEnabled) {
+      for (const group of MUSCLE_GROUPS) {
+        if (muscleFocus[group] > 0) focus[group] = muscleFocus[group];
+      }
     }
 
     return {
@@ -82,9 +149,29 @@ export function Onboarding() {
       weightKg: weight,
       activity,
       goal,
-      rateKgPerWeek: goal === 'maintain' ? 0 : rate
+      rateKgPerWeek: goal === 'maintain' ? 0 : rate,
+      ...(targetWeightEnabled && goal !== 'maintain'
+        ? { targetWeightKg: Math.round(targetWeightKg * 10) / 10 }
+        : {}),
+      ...(Object.keys(focus).length > 0 ? { muscleFocus: focus } : {})
     };
-  }, [activity, age, feet, goal, heightCm, inches, pounds, rate, sex, units, weightKg]);
+  }, [
+    activity,
+    age,
+    feet,
+    goal,
+    heightCm,
+    inches,
+    muscleEnabled,
+    muscleFocus,
+    pounds,
+    rate,
+    sex,
+    targetWeightEnabled,
+    targetWeightKg,
+    units,
+    weightKg
+  ]);
 
   function validateBody(): boolean {
     const nextErrors: Errors = {};
@@ -157,7 +244,7 @@ export function Onboarding() {
       const feetValue = Number(feet);
       const inchValue = Number(inches);
       if (Number.isFinite(feetValue) && Number.isFinite(inchValue)) {
-        setHeightCm(String(Math.round(inchesToCentimetres(feetValue * 12 + inchValue))));
+        setHeightCm(String(Math.round((feetValue * 12 + inchValue) * 2.54)));
       }
       const lb = Number(pounds);
       if (Number.isFinite(lb) && lb > 0) {
@@ -175,6 +262,23 @@ export function Onboarding() {
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   }
 
+  function updatePreference<K extends keyof Preferences>(key: K, value: Preferences[K]) {
+    setPreferences((current) => ({ ...current, [key]: value }));
+  }
+
+  function featureCount(): number {
+    return [
+      preferences.photoLogging,
+      preferences.textLogging,
+      preferences.aiChat,
+      preferences.recipeIdeas
+    ].filter(Boolean).length;
+  }
+
+  function sendsDataToAi(): boolean {
+    return preferences.photoLogging || preferences.aiChat || preferences.recipeIdeas;
+  }
+
   function handleContinue() {
     if (step === 0) {
       goToStep(1);
@@ -185,6 +289,22 @@ export function Onboarding() {
       if (!validateBody() || !profile) return;
       applyCalculatedTargets(profile);
       goToStep(2);
+      return;
+    }
+
+    if (step === 2) {
+      if (aiConsent && !preferences.aiConsentAt) {
+        updatePreference('aiConsentAt', Date.now());
+      }
+      const needsConsent = sendsDataToAi();
+      if (needsConsent && !aiConsent && !preferences.aiConsentAt) {
+        setErrors({
+          consent:
+            'Confirm the AI notice, or turn off the AI features, to continue. You can also change this later in Settings.'
+        });
+        return;
+      }
+      goToStep(3);
       return;
     }
 
@@ -212,12 +332,20 @@ export function Onboarding() {
       return;
     }
 
-    completeOnboarding(profile, {
-      kcal: Math.round(kcal),
-      protein: Math.round(protein),
-      carbs: Math.round(carbs),
-      fat: Math.round(fat)
-    });
+    completeOnboarding(
+      profile,
+      {
+        kcal: Math.round(kcal),
+        protein: Math.round(protein),
+        carbs: Math.round(carbs),
+        fat: Math.round(fat)
+      },
+      {
+        ...preferences,
+        avoidIngredients: parseList(avoidText),
+        aiConsentAt: aiConsent || preferences.aiConsentAt ? Date.now() : null
+      }
+    );
     window.location.hash = '#/today';
     window.scrollTo({ top: 0 });
   }
@@ -230,18 +358,30 @@ export function Onboarding() {
 
   const maintenance = profile ? Math.round(maintenanceCalories(profile)) : null;
   const macroTotal = targets
-    ? Math.round((Number(targetProtein) || 0) * 4 + (Number(targetCarbs) || 0) * 4 + (Number(targetFat) || 0) * 9)
+    ? Math.round(
+        (Number(targetProtein) || 0) * 4 +
+          (Number(targetCarbs) || 0) * 4 +
+          (Number(targetFat) || 0) * 9
+      )
     : 0;
+  const weightLabel = (kg: number) =>
+    units === 'metric'
+      ? `${Math.round(kg * 10) / 10} kg`
+      : `${formatNumber(kilogramsToPounds(kg))} lb`;
+  const targetWeightMin = 30;
+  const targetWeightMax = 250;
 
   return (
     <div className="onboarding">
       <header className="onboarding-top">
         <Brand />
-        <span className="step-count">Step {step + 1} of 3</span>
+        <span className="step-count">
+          Step {step + 1} of {STEP_COUNT}
+        </span>
       </header>
 
       <div className="onboarding-progress" aria-hidden="true">
-        <span style={{ width: `${((step + 1) / 3) * 100}%` }} />
+        <span style={{ width: `${((step + 1) / STEP_COUNT) * 100}%` }} />
       </div>
 
       <main className="onboarding-body" key={step}>
@@ -286,24 +426,57 @@ export function Onboarding() {
             {goal !== 'maintain' ? (
               <fieldset className="field-group">
                 <legend className="field-label">Pace</legend>
-                <div className="segmented">
-                  {RATE_OPTIONS.map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      className={rate === value ? 'segmented-item is-active' : 'segmented-item'}
-                      aria-pressed={rate === value}
-                      onClick={() => setRate(value)}
-                    >
-                      {value} kg/wk
-                    </button>
-                  ))}
-                </div>
-                <p className="field-hint">
-                  0.5 kg a week is a moderate pace. Smaller changes are easier to keep.
-                </p>
+                <Slider
+                  label="Weekly change"
+                  value={rate}
+                  min={RATE_MIN}
+                  max={RATE_MAX}
+                  step={RATE_STEP}
+                  onChange={(value) => setRate(clamp(value, RATE_MIN, RATE_MAX))}
+                  format={(value) =>
+                    units === 'metric'
+                      ? `${value.toFixed(2)} kg / week`
+                      : `${(kilogramsToPounds(value)).toFixed(1)} lb / week`
+                  }
+                  hint="Smaller changes are usually easier to keep. CalAI never enforces a pace."
+                />
               </fieldset>
             ) : null}
+
+            <fieldset className="field-group">
+              <legend className="field-label">Training emphasis</legend>
+              <ToggleRow
+                label="Set muscle-group priorities"
+                description="Optional. These sliders only shape recipe and coaching wording. They are not body measurements or medical targets."
+                checked={muscleEnabled}
+                onChange={setMuscleEnabled}
+              />
+              {muscleEnabled ? (
+                <div className="slider-stack">
+                  {MUSCLE_GROUPS.map((group) => (
+                    <Slider
+                      key={group}
+                      label={MUSCLE_LABELS[group]}
+                      value={muscleFocus[group]}
+                      min={0}
+                      max={100}
+                      step={5}
+                      onChange={(value) =>
+                        setMuscleFocus((current) => ({ ...current, [group]: value }))
+                      }
+                      format={(value) => `${value}% priority`}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-small"
+                    onClick={() => setMuscleFocus(emptyMuscleFocus())}
+                  >
+                    Clear priorities
+                  </button>
+                </div>
+              ) : null}
+            </fieldset>
           </>
         ) : null}
 
@@ -454,6 +627,34 @@ export function Onboarding() {
               </label>
             )}
 
+            {goal !== 'maintain' ? (
+              <fieldset className="field-group">
+                <legend className="field-label">Target weight</legend>
+                <ToggleRow
+                  label="Set a target weight"
+                  description="Optional. CalAI only uses it to describe progress; it does not push you toward a number."
+                  checked={targetWeightEnabled}
+                  onChange={setTargetWeightEnabled}
+                />
+                {targetWeightEnabled ? (
+                  <Slider
+                    label="Target"
+                    value={targetWeightKg}
+                    min={targetWeightMin}
+                    max={targetWeightMax}
+                    step={0.5}
+                    onChange={setTargetWeightKg}
+                    format={weightLabel}
+                    hint={
+                      Number.isFinite(currentWeightKg) && currentWeightKg > 0
+                        ? `Current weight is ${weightLabel(currentWeightKg)}.`
+                        : 'You can change this later in Settings.'
+                    }
+                  />
+                ) : null}
+              </fieldset>
+            ) : null}
+
             <label className="field">
               <span className="field-label">Activity</span>
               <select
@@ -473,6 +674,170 @@ export function Onboarding() {
         ) : null}
 
         {step === 2 ? (
+          <>
+            <p className="eyebrow">How you log</p>
+            <h1>Make it yours.</h1>
+            <p className="page-lede">
+              These choices only change shortcuts and suggestions. Manual logging always works,
+              and you can edit this later in Settings.
+            </p>
+
+            <fieldset className="field-group">
+              <legend className="field-label">Tracking style</legend>
+              <div className="choice-grid choice-grid-two">
+                {TRACKING_STYLES.map((style) => (
+                  <label
+                    key={style}
+                    className={`choice-card${
+                      preferences.trackingStyle === style ? ' choice-card-active' : ''
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="tracking-style"
+                      value={style}
+                      checked={preferences.trackingStyle === style}
+                      onChange={() => updatePreference('trackingStyle', style)}
+                    />
+                    <span className="choice-title">{TRACKING_STYLE_LABELS[style]}</span>
+                    <span className="choice-hint">
+                      {style === 'quick'
+                        ? 'Keep the day light with quick adds and photos'
+                        : 'See macros, meals, and full history'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="field-group">
+              <legend className="field-label">Shortcuts to show</legend>
+              <div className="toggle-stack">
+                <ToggleRow
+                  label="Photo logging"
+                  description="Take a meal photo and review AI estimates before logging."
+                  checked={preferences.photoLogging}
+                  onChange={(checked) => updatePreference('photoLogging', checked)}
+                />
+                <ToggleRow
+                  label="Describe a meal"
+                  description="Type or dictate “two eggs and toast” and confirm the parsed items."
+                  checked={preferences.textLogging}
+                  onChange={(checked) => updatePreference('textLogging', checked)}
+                />
+                <ToggleRow
+                  label="AI coach"
+                  description="Ask questions about your own totals and get recipe ideas."
+                  checked={preferences.aiChat}
+                  onChange={(checked) => updatePreference('aiChat', checked)}
+                />
+                <ToggleRow
+                  label="Recipe ideas"
+                  description="Generate recipes from what you have, matched to your preferences."
+                  checked={preferences.recipeIdeas}
+                  onChange={(checked) => updatePreference('recipeIdeas', checked)}
+                />
+              </div>
+            </fieldset>
+
+            {sendsDataToAi() ? (
+              <div className="consent-box">
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    checked={aiConsent || preferences.aiConsentAt !== null}
+                    onChange={(event) => {
+                      setAiConsent(event.target.checked);
+                      updatePreference(
+                        'aiConsentAt',
+                        event.target.checked ? Date.now() : null
+                      );
+                    }}
+                  />
+                  <span>
+                    I understand AI estimates can be wrong and agree to send only the meal photo
+                    or text I choose, plus a summary of my totals and preferences, to CalAI's AI
+                    provider.
+                  </span>
+                </label>
+                <p className="fine-print">
+                  AI is optional. It is never used for simple storage, and nothing is logged until
+                  you confirm. You can withdraw consent in Settings.
+                </p>
+                <FieldError message={errors.consent} />
+              </div>
+            ) : null}
+
+            <label className="field">
+              <span className="field-label">Food preference</span>
+              <select
+                className="select"
+                value={preferences.diet}
+                onChange={(event) =>
+                  updatePreference('diet', event.target.value as DietPattern)
+                }
+              >
+                {DIET_PATTERNS.map((value) => (
+                  <option key={value} value={value}>
+                    {DIET_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+              <span className="field-hint">
+                Used for recipe ideas and suggestions. It never filters your diary.
+              </span>
+            </label>
+
+            <fieldset className="field-group">
+              <legend className="field-label">Cuisines you enjoy</legend>
+              <div className="chip-row">
+                {CUISINE_OPTIONS.map((cuisine) => {
+                  const active = preferences.cuisines.includes(cuisine);
+                  return (
+                    <button
+                      key={cuisine}
+                      type="button"
+                      className={`chip${active ? ' is-active' : ''}`}
+                      aria-pressed={active}
+                      onClick={() =>
+                        updatePreference(
+                          'cuisines',
+                          active
+                            ? preferences.cuisines.filter((item) => item !== cuisine)
+                            : [...preferences.cuisines, cuisine].slice(0, 6)
+                        )
+                      }
+                    >
+                      {cuisine}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="field-hint">Optional. Choose up to six.</p>
+            </fieldset>
+
+            <label className="field">
+              <span className="field-label">Ingredients to avoid</span>
+              <input
+                value={avoidText}
+                onChange={(event) => setAvoidText(event.target.value)}
+                placeholder="peanuts, shellfish"
+                autoComplete="off"
+              />
+              <span className="field-hint">
+                Optional, comma separated. Used to avoid recipe suggestions, not to diagnose
+                allergies. Always check labels.
+              </span>
+            </label>
+
+            <p className="fine-print">
+              Reminders are off by default. You can turn on in-app reminders, a calendar file, or
+              optional SMS in Settings.
+            </p>
+          </>
+        ) : null}
+
+        {step === 3 ? (
           <>
             <p className="eyebrow">Your targets</p>
             <h1>Daily numbers.</h1>
@@ -547,10 +912,36 @@ export function Onboarding() {
               Recalculate from my stats
             </button>
 
+            <div className="summary-review">
+              <h2 className="summary-review-title">Your setup</h2>
+              <ul>
+                <li>
+                  <span>Goal</span>
+                  <strong>{GOAL_LABELS[profile?.goal ?? goal]}</strong>
+                </li>
+                <li>
+                  <span>Tracking</span>
+                  <strong>{TRACKING_STYLE_LABELS[preferences.trackingStyle]}</strong>
+                </li>
+                <li>
+                  <span>Food preference</span>
+                  <strong>{DIET_LABELS[preferences.diet]}</strong>
+                </li>
+                <li>
+                  <span>Shortcuts</span>
+                  <strong>{featureCount()} enabled</strong>
+                </li>
+                <li>
+                  <span>Reminders</span>
+                  <strong>Off — change in Settings</strong>
+                </li>
+              </ul>
+            </div>
+
             <p className="fine-print">
-              CalAI enforces a 1,200 kcal floor as a safety guardrail. This is an estimate,
-              not medical advice. If you have a health condition or a history of disordered
-              eating, talk to a professional before setting aggressive targets.
+              CalAI enforces a 1,200 kcal floor as a safety guardrail. This is an estimate, not
+              medical advice. If you have a health condition or a history of disordered eating,
+              talk to a professional before setting aggressive targets.
             </p>
           </>
         ) : null}
@@ -565,7 +956,7 @@ export function Onboarding() {
           <span />
         )}
         <button type="button" className="btn btn-primary" onClick={handleContinue}>
-          {step === 2 ? 'Start tracking' : 'Continue'}
+          {step === 3 ? 'Start tracking' : 'Continue'}
         </button>
       </footer>
     </div>

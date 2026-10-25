@@ -22,13 +22,15 @@ export async function completeOnboarding(
     await page.getByLabel('Age').fill('34');
     await page.getByLabel('Height in feet').fill('5');
     await page.getByLabel('Height in inches').fill('9');
-    await page.getByLabel('Weight').fill('170');
+    await page.getByRole('textbox', { name: /^Weight lb$/ }).fill('170');
   } else {
     await page.getByLabel('Age').fill('34');
     await page.getByLabel('Height').fill('175');
-    await page.getByLabel('Weight').fill('72');
+    await page.getByRole('textbox', { name: /^Weight kg$/ }).fill('72');
   }
 
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('heading', { name: 'Make it yours.' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Daily numbers.' })).toBeVisible();
   await page.getByRole('button', { name: 'Start tracking' }).click();

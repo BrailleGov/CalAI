@@ -47,6 +47,18 @@ jobs:
         env:
           CI: true
 
+      - name: Build production bundle
+        run: npm run build
+        env:
+          VITE_API_BASE: https://calai-api.braille.workers.dev
+          VITE_VAPID_PUBLIC_KEY: BJDE_5Jq-yfGSdSD8sAR86xMGfQXkTqR-64TFiDJsyQIS-1dYG-5i82nMJQx5enYAN6hwh9EHpaZr_Na9MkRI4I
+
+      - name: Configured-AI E2E tests
+        run: npx playwright test e2e/ai-configured.spec.ts
+        env:
+          CI: true
+          VITE_API_BASE: https://calai-api.braille.workers.dev
+
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4

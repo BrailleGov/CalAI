@@ -1,29 +1,31 @@
 # CalAI — architecture and implementation plan
 
 This document covers how the product plan in [../PLAN.md](../PLAN.md) gets built. It
-describes the v0.2 implementation in this repository and the extensions planned for v0.3.
-Operational caveats and a handoff prompt are in [../NOTES.md](../NOTES.md).
+describes the v0.3 implementation in this repository. Operational caveats and a handoff
+prompt are in [../NOTES.md](../NOTES.md).
 
 ## 1. System overview
 
 ```mermaid
 flowchart LR
-  PWA["CalAI PWA<br/>React + TypeScript"] -->|sync read/write| LS[("localStorage<br/>calai:v1 schema v2")]
+  PWA["CalAI PWA<br/>React + TypeScript"] -->|sync read/write| LS[("localStorage<br/>calai:v1 schema v3")]
   PWA -.->|one-time recovery| LegacyIDB[("IndexedDB<br/>v0.1.0 diary")]
   PWA -->|static assets| Pages["GitHub Pages<br/>/CalAI/"]
   PWA -->|direct search fallback| OFF["Open Food Facts"]
-  PWA -.->|optional proxy, push| Worker["Cloudflare Worker<br/>API + KV"]
+  PWA -.->|optional API| Worker["Cloudflare Worker<br/>KV + D1"]
   Worker -.-> OFF
   Worker -.-> USDA["USDA FoodData Central"]
+  Worker -.-> DeepSeek["DeepSeek<br/>deepseek-flash"]
+  Worker -.-> Textbelt["Textbelt<br/>outbound SMS"]
+  Worker -.-> D1[("D1<br/>devices, encrypted snapshots,<br/>SMS prefs/log, quotas")]
   Worker -.-> Push["Web Push endpoints"]
-  Worker -.-> LLM["Vision + LLM providers<br/>v0.3"]
   SW["Service worker<br/>precache + push"] --- PWA
   SW --- Pages
 ```
 
-The diary is always local. Online food search is the only runtime read in v0.2; it uses a
-configured Worker when present, otherwise Open Food Facts directly. Web Push is opt-in and
-inactive without Worker/VAPID configuration. There are still no accounts and no analytics.
+The diary lives locally by default. Online food search is a runtime read; optional encrypted
+cloud backup stores a device-scoped snapshot in D1. AI, SMS, and push all require the Worker.
+There are no accounts and no analytics.
 
 ## 2. Stack
 
@@ -36,14 +38,19 @@ Chosen and shipped through v0.2:
   **localStorage** adapter (`calai:v1`). **idb-keyval** is used only for a bounded one-time
   read of the v0.1.0 IndexedDB diary.
 - **HashRouter** routes: `#/today`, `#/day/YYYY-MM-DD`, `#/foods`, `#/recipes`,
-  `#/history`, `#/settings`.
+  `#/assistant`, `#/history`, `#/settings`.
 - **Plain CSS** with design tokens; no UI kit. Avoids restyling fights and keeps the payload small.
 - **vite-plugin-pwa** with `injectManifest`; a hand-written `src/sw.ts` precaches the app
   shell, serves navigation offline, and handles push/notification clicks.
-- **Vitest** for nutrition, dates, backup/migration, recipes, reminders, remote parsing, and
-  Worker normalization.
+- **Vitest** for nutrition, dates, backup/migration, recipes, reminders, remote parsing,
+  preferences, local NL parsing, image sizing, assistant context, SMS helpers, and Worker
+  normalization/AI/SMS.
 - **Playwright + axe-core** for committed E2E regressions and accessibility scans.
-- **Cloudflare Worker** (`worker/`) for optional search caching, USDA, rate caps, and push.
+- **Cloudflare Worker** (`worker/`) for optional search caching, USDA, AI proxying, encrypted
+  D1 backup, SMS cron, rate caps, and push.
+- **DeepSeek** `deepseek-flash` (DeepSeek-V4.1-Flash-1017) for vision, text parsing, chat, and
+  recipes. JSON output mode; thinking disabled for latency.
+- **Textbelt** for outbound-only SMS reminders.
 - Inline SVG icon components; no icon library.
 - System font stack; no third-party font requests (privacy, offline, speed).
 
@@ -54,9 +61,12 @@ Additional choices, by release:
 | Remote food search | OFF direct fallback; Worker + KV cache + USDA | **v0.2** |
 | Barcode | `BarcodeDetector` with lazy `@zxing/browser` fallback | **v0.2** |
 | Push reminders | Worker cron + `web-push` + VAPID + KV | **v0.2 code; config pending** |
-| Vision / text parsing | Worker → multimodal model, JSON schema | v0.3 |
-| Chat | Worker + locally computed context; optional client tools | v0.3 |
-| E2E tests | Playwright (Chromium, mobile viewport) | **v0.2** |
+| Vision / text parsing | Worker → DeepSeek vision, JSON output, user confirmation | **v0.3** |
+| Chat | Worker + locally computed context; proposals confirm client-side | **v0.3** |
+| Recipe book / AI recipes | Curated data + DeepSeek generation/recommendation | **v0.3** |
+| Cloud backup | D1 + device auth + AES-GCM snapshots | **v0.3 code; deploy pending** |
+| SMS reminders | Textbelt via Worker cron; consent + dedupe | **v0.3 code; deploy pending** |
+| E2E tests | Playwright (Chromium, mobile viewport) | **v0.2/v0.3** |
 | Charts | Hand-rolled SVG (no chart library) | **v0.2** |
 
 ## 3. Repository layout
@@ -76,12 +86,15 @@ Current:
 │   ├── features/
 │   │   ├── onboarding/
 │   │   ├── today/
+│   │   ├── ai/                # AiLogSheet, AssistantPage
 │   │   ├── foods/
 │   │   ├── recipes/
 │   │   ├── history/
-│   │   └── settings/
-│   ├── lib/                # dates, nutrition, search, backup, remote, recipes, push
-│   ├── data/seedFoods.ts
+│   │   └── settings/          # personalization, cloud, SMS, data
+│   ├── lib/                   # dates, nutrition, search, backup, remote, AI, sync, SMS
+│   ├── data/
+│   │   ├── seedFoods.ts
+│   │   └── curatedRecipes.ts
 │   ├── store/
 │   ├── styles/
 │   └── sw.ts               # injectManifest service worker + push handlers
@@ -93,16 +106,24 @@ Current:
 └── package.json
 ```
 
-Worker (shipped in v0.2):
+Worker (shipped in v0.3):
 
 ```
 worker/
-  src/index.ts             # router: search, barcode, push, scheduled cron
+  src/index.ts             # router: search, barcode, push, AI, auth, sync, SMS, cron
+  src/ai.ts                # DeepSeek calls, prompts, output validation
+  src/auth.ts              # device registration + bearer auth
+  src/crypto.ts            # SHA-256, AES-GCM, random tokens
+  src/db.ts                # D1 schema bootstrap
+  src/sync.ts              # encrypted snapshot storage
+  src/sms.ts               # Textbelt, consent, dedupe, cron delivery
+  src/quota.ts             # KV/D1/memory quotas
   src/normalize.ts         # OFF/USDA → FoodDTO, dedupe, ranking
   src/providers/off.ts
   src/providers/usda.ts
   src/cache.ts             # KV cache + per-IP daily cap
   src/types.ts
+  migrations/0001_init.sql
   wrangler.toml
 ```
 
@@ -119,17 +140,12 @@ type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 type Nutrients = { kcal: number; protein: number; carbs: number; fat: number };
 
-type Food = {
-  id: string;
-  name: string;
-  brand?: string;
-  barcode?: string;
-  servingLabel: string;      // "1 large", "100 g", "1 cup"
-  servingGrams?: number;
-  nutrients: Nutrients;      // per serving
-  source: 'seed' | 'custom' | 'off' | 'usda' | 'recipe';
-  createdAt: number;
-};
+type FoodCategory =
+  | 'protein' | 'dairy' | 'grains' | 'fruit' | 'vegetables'
+  | 'fats' | 'drinks' | 'meals' | 'snacks' | 'condiments';
+
+type MuscleGroup =
+  | 'chest' | 'back' | 'shoulders' | 'arms' | 'core' | 'glutes' | 'legs';
 
 type Entry = {
   id: string;
@@ -153,6 +169,21 @@ type Profile = {
   activity: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
   goal: 'lose' | 'maintain' | 'gain';
   rateKgPerWeek: number;
+  targetWeightKg?: number;      // optional, user-set only
+  muscleFocus?: Partial<Record<MuscleGroup, number>>; // 0–100 emphasis
+};
+
+type Food = {
+  id: string;
+  name: string;
+  brand?: string;
+  barcode?: string;
+  servingLabel: string;
+  servingGrams?: number;
+  nutrients: Nutrients;
+  source: 'seed' | 'custom' | 'off' | 'usda' | 'recipe';
+  category?: FoodCategory;
+  createdAt: number;
 };
 
 type RecipeIngredient = {
@@ -168,23 +199,29 @@ type Recipe = {
   name: string;
   servings: number;
   ingredients: RecipeIngredient[];
+  description?: string;
+  instructions?: string[];
+  tags?: string[];
+  source?: 'user' | 'ai' | 'curated';
   createdAt: number;
   updatedAt: number;
 };
 
-type WeightEntry = { id: string; date: string; kg: number; createdAt: number };
-type WaterEntry = { id: string; date: string; ml: number; createdAt: number };
-
-type Reminder = { id: string; meal: Meal; time: string; enabled: boolean };
-type ReminderSettings = {
-  enabled: boolean;
-  quietStart: string;        // HH:MM
-  quietEnd: string;
-  items: Reminder[];
+type Preferences = {
+  trackingStyle: 'quick' | 'detailed';
+  photoLogging: boolean;
+  textLogging: boolean;
+  aiChat: boolean;
+  recipeIdeas: boolean;
+  aiConsentAt: number | null;
+  diet: 'no_preference' | 'omnivore' | 'vegetarian' | 'vegan' | 'pescatarian'
+    | 'halal' | 'kosher' | 'other';
+  avoidIngredients: string[];
+  cuisines: string[];
 };
 
-type PersistedV2 = {
-  schemaVersion: 2;
+type PersistedV3 = {
+  schemaVersion: 3;
   onboarded: boolean;
   profile: Profile | null;
   targets: Targets;
@@ -202,14 +239,31 @@ type PersistedV2 = {
     units: 'metric' | 'imperial';
     waterGoalMl: number;
   };
+  preferences: Preferences;
+  sms: {
+    enabled: boolean;
+    phone: string;
+    consentAt: number | null;
+    lastTestAt?: number;
+  };
+  cloudSync: { enabled: boolean; lastSyncedAt: number | null };
+  chatMessages: { id: string; role: 'user' | 'assistant'; content: string;
+    createdAt: number; window?: string; error?: boolean }[];
 };
 ```
 
-The Worker stores only push subscriptions (`endpoint`, keys, timezone, reminder times,
-quiet hours, random device ID) in KV. It never stores diary entries or food logs. v0.3 AI
-records (`chats`, `messages`, `aiJobs`) remain local unless an explicit request is made.
+The Worker now stores, only when the user opts in:
 
-### Persistence and migration (v0.1.1 → v0.2)
+- device records: random device ID + SHA-256 hash of a server-issued bearer token;
+- encrypted cloud snapshots (AES-GCM, device-scoped, no SMS phone);
+- SMS preferences: encrypted phone, consent timestamp, timezone, quiet hours,
+  enabled reminder times;
+- SMS delivery log (device, reminder ID, local day, status) for deduplication;
+- rate-limit counters; plus KV search cache, push subscriptions, and push sent markers.
+
+AI prompts, photos, text, food names, and calorie values are not logged.
+
+### Persistence and migration (v0.1.1 → v0.3)
 
 v0.1.0 shipped with asynchronous IndexedDB hydration. When IndexedDB was blocked (privacy
 settings, private windows, in-app browsers) or an open request never settled, the app stayed
@@ -228,15 +282,18 @@ on its opening screen forever. v0.1.1 removes that failure mode:
 - Corrupt persisted JSON is discarded so the app falls back to onboarding instead of crashing.
 - Storage is requested persistent on first log (`navigator.storage.persist()`) where supported.
 - Payload size is small (entries, custom foods, saved online foods, recipes, weights, water,
-  settings; seed foods are static). The remote-food cache is capped at 100 items. v0.2 keeps
-  localStorage; granular IndexedDB is deferred until measured payload/write growth justifies
-  it.
-- v0.2 uses `schemaVersion: 2`. `validatePersistedData` accepts v1 or v2; v1 documents and
-  backups are normalised in memory (new arrays + `waterGoalMl: 2000`) and written back as v2.
-  Unknown future versions are rejected. The Zustand storage adapter always returns version 2
-  after validation, so no async migration gate is introduced.
-- Export envelope: `{ app: "calai", schemaVersion: 2, exportedAt, data }`. Import validates
-  the envelope and every nutrient number; importing a v1 backup migrates it first.
+  settings, preferences, chat; seed foods are static). The remote-food cache is capped at 100
+  items. v0.3 keeps localStorage; granular IndexedDB is deferred until measured payload/write
+  growth justifies it.
+- v0.3 uses `schemaVersion: 3`. `validatePersistedData` accepts v1, v2, or v3; v1/v2
+  documents and backups are normalised in memory with default preferences, SMS/cloud state,
+  and an empty chat transcript, then written back as v3. Unknown future versions are
+  rejected. The Zustand storage adapter always returns version 3 after validation, so no
+  async migration gate is introduced.
+- Export envelope: `{ app: "calai", schemaVersion: 3, exportedAt, data }`. Import validates
+  the envelope and every nutrient number; importing a v1/v2 backup migrates it first. SMS
+  phone numbers are stripped from exports, and imports preserve the device's existing SMS
+  settings and disable cloud auto-sync until the user re-enables it.
 
 ### Nutrition and target math
 
@@ -252,9 +309,12 @@ on its opening screen forever. v0.1.1 removes that failure mode:
 
 ## 5. Food data
 
-v0.1 ships a curated seed list (≈ 100 common foods) in the bundle. Seed foods are not
-editable; users create custom foods. Search covers seed + custom + recents and is
+v0.3 ships ≈220 curated common foods in the bundle, each with a category used for browsing
+and filtering. Seed foods are not editable; users create custom foods. Values are rounded
+public nutrition references. Search covers seed + custom + remote + recipes and is
 case-insensitive over name/brand. Recents are derived from `recentFoodIds` updated on log.
+The AI logging sheet can match recognised names to seed/custom foods and use a library value
+when a gram serving is available.
 
 v0.2 remote search:
 
@@ -273,60 +333,84 @@ v0.2 remote search:
 - A Worker request is capped per IP per UTC day (default 300) when KV is bound. Search and
   barcode responses include `sources` and `cached` metadata.
 
-## 6. AI architecture (v0.3, planned)
+## 6. AI architecture (v0.3)
+
+### Provider and credentials
+
+- Model: `deepseek-flash`, served by DeepSeek-V4.1-Flash-1017. The API is OpenAI-compatible
+  at `https://api.deepseek.com`. The key is a Worker secret (`DEEPSEEK_API_KEY`).
+- JSON output mode (`response_format: { type: 'json_object' }`), thinking disabled, bounded
+  `max_tokens`, explicit timeouts (35–60 s), and one request per user action (no retries).
+- The verified provider docs confirm vision, JSON output, system messages, and image limits.
+  Live smoke tests against the Worker's handler code succeeded for text parsing, a banana
+  photo, and recipe generation.
 
 ### Endpoints
 
-| Endpoint | Purpose | Rate limit |
+| Endpoint | Purpose | Default cap |
 | --- | --- | --- |
-| `POST /v1/session` | Issue signed random device token | 3/day per IP |
-| `POST /v1/vision/analyze` | Image → structured food candidates | 5/day per device |
-| `POST /v1/text/parse` | Text → structured items | 20/day per device |
-| `POST /v1/chat` | Grounded Q&A | 30/day per device |
-| `GET /v1/foods/search` | OFF/USDA proxy | 300/day per IP (KV, v0.2) |
+| `POST /v1/auth/register` | Issue a random device token; store only its SHA-256 hash | 10/day per IP |
+| `PUT/GET/DELETE /v1/sync` | Encrypted cloud snapshot, device-scoped | 1 MB payload |
+| `POST /v1/ai/recognize` | Image → structured food candidates | 10/day per device+IP |
+| `POST /v1/ai/parse` | Text → structured items | 40/day per device+IP |
+| `POST /v1/ai/chat` | Grounded Q&A + optional proposal | 60/day per device+IP |
+| `POST /v1/ai/recipes` | Generate or rank recipes | 20/day per device+IP |
+| `POST /v1/sms/prefs` | Save consent, phone, reminders | authenticated device |
+| `POST /v1/sms/test` | One test text | 1/day per device |
+| `DELETE /v1/sms/prefs` | Delete SMS preferences | authenticated device |
+| `GET /v1/foods/search` | OFF/USDA proxy | 300/day per IP (KV) |
 
-Quotas live in KV with a daily reset; a global monthly budget cap short-circuits the Worker.
-No API keys ever reach the client.
+Quotas use KV when bound, then D1, then isolate memory for local dev. A monthly global request
+cap (`AI_MONTHLY_REQUEST_CAP`, default 5,000) short-circuits AI calls. No API keys reach the
+client.
 
 ### Vision flow
 
-1. Client downscales to ≤ 1024 px JPEG (canvas), strips EXIF, shows consent.
-2. `POST /v1/vision/analyze` with multipart image + device token.
-3. Worker validates magic bytes and size, calls the provider with a JSON schema:
-   `{ items: [{ name, quantity, unit, grams, confidence }], note }`.
-4. Worker returns candidates only; it does not store the image.
-5. Client resolves each name against local foods, then remote search; unresolved items offer
-   custom-food prefill.
-6. User edits portions and confirms. Entry snapshots are created locally.
-7. Failure/offline/over-quota → a clear message and the normal search flow.
+1. Client validates the file, downscales to ≤ 1024 px JPEG on canvas (strips EXIF), and shows
+   consent if needed.
+2. `POST /v1/ai/recognize` sends a base64 data URL; the Worker checks the declared MIME,
+   decoded size (≤ 5 MB), and magic bytes.
+3. DeepSeek is called with a system prompt and an image content block. It returns
+   `{ items: [{ name, quantityLabel, grams, kcal, protein, carbs, fat, confidence, notes }],
+   note }`.
+4. The Worker clamps every number, caps items, and returns confidence; it does not store the
+   image.
+5. The client matches each name to the local library, can apply a library value when a gram
+   serving exists, and lets the user edit name, grams/servings, and macros.
+6. Nothing is logged until the user presses the final log button. Items can be saved to the
+   custom-food library.
+7. Failure/offline/over-quota → a clear message, retry, or manual search with the meal context
+   preserved.
 
-### Text and voice
+### Text, chat, and recipes
 
-Text parsing reuses the schema minus the image. Voice input uses `SpeechRecognition` where
-available and simply fills the text field; no raw audio is uploaded.
-
-### Chat
-
-- Context is assembled on the client: goal, 7/14/30-day totals, averages, macro split,
-  logging days, and recent food names. No email, account ID, or raw entry list.
-- v0.3 answers one-shot over that context. If tools are added, they execute client-side or
-  return aggregates; server-side storage of health data remains out of scope.
-- Response contract: plain text with a required `window` label rendered as a chip. Numeric
-  claims must come from the supplied context. Missing data is stated explicitly.
-- Local transcript; clear-chat; per-message feedback stored locally only.
-- Prompts and evals are versioned in the repo. A 30-question eval with known data must reach
-  ≥ 90% numeric accuracy and zero unsafe medical advice before release.
+- Text parsing reuses the item schema minus the image. An offline matcher covers simple
+  phrases against local foods; it never invents nutrition and reports unmatched text.
+- Chat context is assembled on the client: goal, target weight, training focus, preferences,
+  7/14/30-day totals and averages, logged days, recent food names, weight, water, and active
+  reminder meals. No email, account ID, or raw entries are sent.
+- The response contract is `{ reply, window, suggestions, proposal? }`. Numeric claims must
+  come from the supplied context, missing data is stated, and the UI renders `window` as a
+  chip. A proposal is shown as a review card and is only written after confirmation.
+- Recipes use `POST /v1/ai/recipes` in `generate` mode (prompt, meal, servings, time,
+  preferences, training focus) or `suggest` mode (curated candidate IDs + preferences).
+  Generated recipes are previewed and saved only on approval; the user can edit ingredients
+  and method afterwards.
+- Transcripts live locally under `chatMessages` (cap 60) with a clear-chat action.
 
 ### Safety and privacy
 
-- Opt-in consent before the first AI request; the diary is otherwise never uploaded.
-- Provider APIs configured for no training / zero retention where offered.
-- Image and text payloads are not logged by the Worker; errors log status codes only.
-- System prompt forbids medical diagnosis, extreme dieting, and shaming; a 1200 kcal floor
-  and "hide numbers" mode are UX guardrails.
-- AI output is labelled as an estimate.
+- AI is opt-in. Photo, coach, and recipe toggles default off; text logging defaults on but uses
+  offline matching unless AI consent is present.
+- System prompts forbid medical diagnosis, extreme dieting, and shaming; they also tell the
+  model to treat images and context as data, not instructions.
+- The Worker never logs prompts, photos, text, food names, or calorie values. It logs status
+  codes only.
+- AI output is labelled as an estimate and is never treated as verified nutrition.
+- Before public scale, add a formal eval set, provider budget alerts, and abuse protection
+  (Turnstile or accounts). Current protection is quotas plus a server-side key.
 
-## 7. Reminders (v0.2)
+## 7. Reminders (v0.2/v0.3)
 
 Local tier (shipped):
 
@@ -351,6 +435,20 @@ Push tier (implemented, inactive until configured):
 - iOS requires an installed PWA and explicit permission; the UI explains when push is not
   configured. Local reminders and `.ics` are the guaranteed fallback.
 
+SMS tier (implemented, inactive until Worker + Textbelt are configured):
+
+- Outbound only. The client collects a phone number, an explicit consent checkbox, and the
+  same enabled reminder times/quiet hours; the Worker requires authenticated device ownership
+  and stores the phone with AES-GCM (`DATA_ENC_KEY`).
+- A daily test limit and a four-text/day cap per device, plus a unique
+  `(device, reminder, local day)` log row, prevent duplicate or runaway messages.
+- The cron resolves local time per stored timezone, applies quiet hours, sends a generic
+  message (`CalAI: time to log lunch. Replies are not monitored.`), and records sent/failed
+  status. Phone numbers and API keys never appear in payloads or logs.
+- Turning SMS off deletes the server-side row; if that request fails, the UI keeps the
+  preference visible and tells the user so delivery may continue.
+- SMS preferences are excluded from JSON exports and cloud snapshots.
+
 ## 8. PWA and offline
 
 - `vite-plugin-pwa` runs in `injectManifest` mode; `src/sw.ts` calls `precacheAndRoute` for
@@ -368,34 +466,42 @@ Push tier (implemented, inactive until configured):
 
 ## 9. Deployment
 
-v0.2 PWA:
+v0.3 PWA:
 
 - GitHub Actions workflow builds with Node 20 and publishes `dist` via
   `actions/configure-pages`, `actions/upload-pages-artifact`, `actions/deploy-pages`.
 - Pages source is **GitHub Actions** (`build_type: workflow`); `.github/workflows/deploy.yml`
-  runs unit tests, typecheck, build, installs Playwright Chromium, runs the committed E2E
-  suite, and only then deploys `dist/` on every push to `main`.
+  runs unit tests, typecheck, the local-first build, and the default E2E suite, then rebuilds
+  with `VITE_API_BASE` and `VITE_VAPID_PUBLIC_KEY`, runs the configured-AI suite, and deploys
+  `dist/` on every push to `main`.
 - `vite.config.ts` sets `base: '/CalAI/'`; the manifest mirrors it.
-- No secrets are needed for the static app. Search/push env values are build-time `VITE_*`
-  variables only when the optional Worker is enabled.
+- No secrets are needed for the static app. API/push env values are build-time `VITE_*`
+  variables. Production sets `VITE_API_BASE=https://calai-api.braille.workers.dev` and the
+  public VAPID key, so AI/cloud/SMS/push are enabled.
 
-Worker (v0.2):
+Worker (v0.3):
 
-- Separate `cd worker && npm install && npx wrangler deploy`; create the `CALAI_CACHE` KV
-  namespace and paste its id into `worker/wrangler.toml`.
-- Secrets via `wrangler secret put`: `USDA_API_KEY` (optional), `VAPID_PUBLIC_KEY`,
-  `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. The VAPID public key is also passed to the client as
-  `VITE_VAPID_PUBLIC_KEY` at build time.
-- `compatibility_flags = ["nodejs_compat"]` for `web-push`.
+- Deployed as `calai-api` at <https://calai-api.braille.workers.dev> with KV `CALAI_CACHE`
+  (`4720c88208744717a583112e89def60f`) and D1 `calai`
+  (`8d689615-14b6-4951-84d4-651d92eb0970`); the ids live in `worker/wrangler.toml`.
+- Secrets via `wrangler secret put`: `DEEPSEEK_API_KEY`, `TEXTBELT_API_KEY`,
+  `DATA_ENC_KEY` (32 random bytes, base64), optional `USDA_API_KEY`, and
+  `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` for push. The VAPID public key is
+  also passed to the client as `VITE_VAPID_PUBLIC_KEY` at build time.
+- Run `npx wrangler d1 migrations apply calai --remote` (optional; `ensureSchema` also
+  creates tables on first use). The initial migration is applied in production.
+- `compatibility_flags = ["nodejs_compat"]` for `web-push`; `compatibility_date = 2025-09-01`.
 - CORS allowlist defaults to `https://braillegov.github.io`, localhost dev ports, and
   `127.0.0.1`; override with `ALLOWED_ORIGINS`.
-- Cron trigger every 5 minutes; KV stores search cache, barcode cache, per-IP daily counters,
-  push subscriptions, device indexes, and sent markers.
-- Local dev: `wrangler dev`, then build the client with `VITE_API_BASE=http://localhost:8787`.
-  `worker/README.md` has the full setup and smoke-test notes.
-- The Worker was not deployed in the v0.2 session (no active Cloudflare credentials). The
-  static app therefore uses direct Open Food Facts. This is a deployment gap, not a missing
-  code path.
+- Cron every 5 minutes: push delivery (if VAPID is configured) and SMS delivery (if Textbelt
+  and D1 are configured). KV stores search/barcode caches, quotas, push subscriptions, and
+  sent markers; D1 stores devices, encrypted snapshots, SMS preferences/log, and quotas.
+- Local dev: `wrangler dev` with a gitignored `worker/.dev.vars`, then build the client with
+  `VITE_API_BASE=http://localhost:8787`. On this Windows/Node 20 machine workerd still fails to
+  start, so production HTTP behavior is verified with live smoke tests instead. See
+  `worker/README.md`.
+- Router handlers are awaited inside the top-level `try` so `AiError`, `SyncError`, and
+  `SmsServiceError` map to their HTTP statuses instead of becoming Cloudflare 1101 exceptions.
 
 Headers: GitHub Pages cannot set response headers. A `<meta http-equiv="Content-Security-Policy">`
 is added at v1.0 after auditing inline styles; `frame-ancestors` is not enforceable that way.
@@ -404,55 +510,74 @@ The Worker sets its own CSP/CORS headers.
 ## 10. Security, privacy, legal
 
 - Health data is sensitive. Local-first by default; no analytics on food names or values.
-- No third-party scripts in v0.1. If analytics are added, they are cookieless, consent-gated,
-  and limited to interaction events.
-- AI requests carry a random device token, not identity. Tokens expire; quotas are per device
-  and per IP.
+- No third-party scripts. If analytics are added, they are cookieless, consent-gated, and
+  limited to interaction events.
+- AI requests carry a random device token, not identity. Quotas are per device+IP; there is a
+  global monthly request cap. AI is opt-in and revocable.
+- Device auth: the Worker issues a 256-bit random token and stores only its SHA-256 hash;
+  sync/SMS requests use `Authorization: Bearer` plus the device ID. AI endpoints rely on
+  device/IP quotas; add Turnstile or accounts before public scale.
+- Cloud snapshots and SMS phone numbers use AES-GCM with `DATA_ENC_KEY`. Snapshots exclude the
+  phone; exports exclude it too. A lost device token means a new device identity; there are no
+  accounts to recover. The phone is also present in this device's local app storage while SMS
+  is configured, the same trust boundary as the diary.
+- SMS is outbound only, consent-gated, quiet-hour aware, capped at four per day per device,
+  deduped per reminder/day, and includes “replies are not monitored”. Turning it off deletes
+  the server row; failure keeps the UI in a state where the user can retry.
 - Worker: payload size caps, image magic-byte checks, rate limits, output schema validation,
-  no content logging, explicit timeouts, and provider fallback.
-- Export/delete-all must always be available.
+  no content logging, explicit timeouts, and provider fallbacks. Provider keys never leave the
+  Worker.
+- Export/delete-all must always be available. Reset attempts to stop SMS delivery before
+  clearing local data.
 - Before public launch: privacy policy, terms, AI disclaimer, data-source attributions
-  (Open Food Facts ODbL, USDA), and a contact address.
+  (Open Food Facts ODbL, USDA), a contact address, and a formal AI eval.
 - Accessibility target: WCAG 2.2 AA — labels, focus traps in dialogs, 44 px targets, no
   colour-only status, reduced motion.
 
 ## 11. Testing and QA
 
 - **Unit (Vitest):** target math, macro rounding, date keys across DST, search ranking,
-  import validation and v1→v2 migration, nutrient scaling, recipe totals, reminder windows
-  and `.ics`, OFF parsing, and Worker normalization.
-- **E2E (Playwright, committed and in CI):** onboarding → log → reload persistence → edit →
-  delete → export/import at 390 × 844; blocked localStorage, blocked IndexedDB, corrupt
-  state, legacy IDB recovery; offline reload; online search success/failure; manual barcode
-  lookup; recipe creation/logging; water and weight persistence; reminder banner and `.ics`
-  download; horizontal overflow at 360/390 px; axe scans in both themes.
+  import validation and v1/v2→v3 migration, nutrient scaling, recipe totals and curated
+  integrity, reminder windows and `.ics`, OFF parsing, preferences, local NL parsing, image
+  sizing, assistant context, SMS helpers, and Worker normalization/AI/SMS.
+- **E2E (Playwright, committed and in CI):** onboarding with personalization → log → reload
+  persistence → edit → delete → export/import at 390 × 844; blocked localStorage, blocked
+  IndexedDB, corrupt state, legacy IDB recovery; offline reload; online search success/failure;
+  manual barcode lookup; recipe creation/logging; curated recipe detail/save; offline text
+  logging; water and weight persistence; reminder banner and `.ics`; assistant and cloud/SMS
+  setup states; horizontal overflow at 360/390 px; axe scans in both themes.
 - **Accessibility:** axe-core with WCAG 2.0/2.1/2.2 A/AA tags, animations finished before
   scanning, 0 violations on all main screens and open sheets.
 - **Device pass:** iPhone Safari (installed), Android Chrome, desktop Chromium.
 - **Performance:** Lighthouse budgets; initial JS < 200 KB gzip.
-- **AI evals (v0.3):** 50 labelled photos, 30 scripted chat questions, unsafe-output review,
-  cost per accepted log measured before launch.
+- **AI evals:** live provider smoke tests exist for text, vision, and recipe generation. A
+  formal 50-photo/30-question eval set, unsafe-output review, and cost-per-accepted-log
+  measurement are still required before public launch.
 
 ## 12. Observability and cost
 
 - v0.1: none beyond build/deploy status and local error surfaces.
 - v0.2+: Cloudflare Worker logs for status/latency only; error reporting (e.g. Sentry) is
   opt-in and scrubbed of health content.
-- Recurring cost target: $0 for Pages/KV at alpha scale; AI capped by a monthly budget
-  (decision pending) with a hard stop and graceful fallback.
+- Recurring cost target: $0 for Pages at alpha scale; KV/D1 within free tiers at small scale.
+  AI is capped by per-device daily quotas and a global monthly request cap; a dollar budget
+  alert is still required before public scale.
 
 ## 13. Versioning and migration
 
-- Persisted state includes `schemaVersion`. v0.1 writes version 1; v0.2 writes version 2.
-- `validatePersistedData` migrates v1 to v2 in memory and rejects unknown future versions.
-  The storage adapter always returns version 2 after validation, so no async migration gate
+- Persisted state includes `schemaVersion`. v0.1 writes version 1; v0.2 writes version 2;
+  v0.3 writes version 3.
+- `validatePersistedData` migrates v1/v2 to v3 in memory and rejects unknown future versions.
+  The storage adapter always returns version 3 after validation, so no async migration gate
   is introduced.
 - Migrations are pure functions tested against fixtures, including a legacy IndexedDB v0.1
-  diary and a v1 JSON backup.
+  diary and v1/v2 JSON backups.
 - Export is versioned and later versions can still import it; import validates ranges
-  (non-negative nutrients, sane quantities, ISO dates, reminder times, barcode limits).
-- Granular IndexedDB stores are deferred to v0.3 and require a measured reason plus a
-  migration; localStorage remains synchronous in v0.2.
+  (non-negative nutrients, sane quantities, ISO dates, reminder times, barcode limits). Phone
+  numbers are stripped from exports; imports preserve local SMS settings and disable cloud
+  auto-sync.
+- Granular IndexedDB stores remain deferred; localStorage is synchronous in v0.3. The optional
+  cloud snapshot is the cross-device copy, encrypted and device-scoped.
 
 ## 14. Build order
 
@@ -466,11 +591,14 @@ The Worker sets its own CSP/CORS headers.
 8. Actions workflow, switch Pages source, verify live URL and custom 404.
 9. v0.2: committed Playwright/axe suite, schema v2 migration, online search, barcode,
    recipes, weight, water, reminders.
-10. v0.2.x: deploy Worker + KV, add USDA key, configure VAPID, device pass.
+10. v0.3: schema v3 migration, personalization onboarding, expanded food library, AI photo/
+    text logging, coach, recipe book, encrypted D1 backup, SMS.
+11. v0.3.x: Worker deployed to <https://calai-api.braille.workers.dev> with KV, D1,
+    migrations, DeepSeek/Textbelt/encryption/VAPID secrets, and production `VITE_API_BASE`;
+    live HTTP sync/AI checks pass. Remaining: SMS delivery and physical-device pass.
 
-v0.1.0 shipped on 2026-10-24; v0.1.1 hardened storage; v0.2.0 shipped on 2026-10-24 with
-the features above. The acceptance lists in [../PLAN.md](../PLAN.md#3-releases) pass locally;
-the Worker and push tiers still need deployment credentials.
+v0.1.0 shipped on 2026-10-24; v0.1.1 hardened storage; v0.2.0 shipped on 2026-10-24; v0.3.0
+is deployed with the Worker, AI, SMS, cloud, and push tiers enabled.
 
 ## 15. v0.1 verification record
 
@@ -527,3 +655,41 @@ the Worker and push tiers still need deployment credentials.
 - Not run in this session: live Lighthouse after the bundle change, physical iOS/Android
   devices, installed-PWA push, USDA live calls, Worker deployment.
 - Version: v0.2.0.
+
+## 17. v0.3 verification record
+
+- Unit tests: 88 passing across the v0.2 areas plus preferences normalization, local text
+  parsing, image sizing, assistant context, curated recipe integrity, SMS helpers, AI response
+  sanitization, and Worker AI/SMS handling.
+- Playwright: 35 tests on Chromium at 390 × 844. The local-first build runs 34 (the
+  configured-AI test is skipped); the Worker-enabled build runs
+  `e2e/ai-configured.spec.ts` against a mocked Worker. Coverage includes the new onboarding
+  steps, target-weight/muscle controls, settings personalization editing, offline text logging,
+  curated recipe detail/save, assistant setup and configured states, cloud/SMS setup states,
+  photo → review → log, coach proposal → confirm, AI recipe picks, and new-screen overflow
+  checks. axe-core reports 0 WCAG 2.0/2.1/2.2 A/AA violations on the new screens.
+- Layout: no horizontal overflow at 360/390 px on Today, Foods, Recipes, Discover, History,
+  Settings, and Assistant.
+- Bundle: initial JS 117.1 KB gzip + 2.4 KB workbox window; CSS 8.9 KB gzip; lazy ZXing chunk
+  108.7 KB gzip. PWA precache 17 entries (867.4 KiB).
+- D1 schema: `worker/migrations/0001_init.sql` validated with SQLite; tables for devices,
+  encrypted snapshots, SMS preferences/log, and rate limits.
+- Live deployment smoke tests (through `https://calai-api.braille.workers.dev`): `/health`
+  reported search/AI/sync/SMS/push true; CORS returned the Pages origin; KV-cached Open Food
+  Facts search returned results; device registration, encrypted snapshot PUT/GET/DELETE
+  round-tripped with 404 after delete; DeepSeek text parse, coach with a 7-day window, recipe
+  generation, and vision on a real banana photo returned valid output. A browser run against the
+  production bundle logged AI-parsed items, enabled and deleted cloud backup, and received a
+  grounded coach reply.
+- Fixed during deployment: route handlers were returned without `await`, so typed errors escaped
+  the router catch and surfaced as Cloudflare 1101. Handlers now await and map statuses (422
+  verified for a non-food image).
+- Playwright: 35 tests total. The local-first build runs 34 (configured-AI test skipped); the
+  Worker-enabled build runs the configured-AI test with a mocked Worker. axe-core remains at 0
+  WCAG A/AA violations.
+- Textbelt quota remains 192 from the earlier consented test; no new SMS was sent during the
+  deployment session. SMS cron, quiet hours, cap handling, and opt-out remain unverified.
+- Not run: local Worker HTTP routing (workerd still fails on this Windows/Node 20 machine),
+  installed-PWA push, USDA live calls, physical camera, iOS/Android device pass, Lighthouse on
+  the v0.3 bundle.
+- Version: v0.3.0 (deployed 2026-10-25).

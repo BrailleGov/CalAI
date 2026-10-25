@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { PersistedData } from '../types';
-import { buildBackup, parseBackup, validatePersistedData } from './backup';
+import {
+  buildBackup,
+  parseBackup,
+  redactForExport,
+  validatePersistedData
+} from './backup';
 
 const data: PersistedData = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   onboarded: true,
   profile: {
     sex: 'female',
@@ -55,7 +60,21 @@ const data: PersistedData = {
       { id: 'snack', meal: 'snack', time: '15:30', enabled: false }
     ]
   },
-  settings: { theme: 'system', units: 'metric', waterGoalMl: 2000 }
+  settings: { theme: 'system', units: 'metric', waterGoalMl: 2000 },
+  preferences: {
+    trackingStyle: 'detailed',
+    photoLogging: true,
+    textLogging: true,
+    aiChat: true,
+    recipeIdeas: true,
+    aiConsentAt: null,
+    diet: 'no_preference',
+    avoidIngredients: [],
+    cuisines: []
+  },
+  sms: { enabled: false, phone: '', consentAt: null },
+  cloudSync: { enabled: false, lastSyncedAt: null },
+  chatMessages: []
 };
 
 describe('backup', () => {
@@ -117,10 +136,43 @@ describe('backup', () => {
     const result = validatePersistedData(v1);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data.schemaVersion).toBe(2);
+      expect(result.data.schemaVersion).toBe(3);
       expect(result.data.settings.waterGoalMl).toBe(2000);
       expect(result.data.reminders.items).toHaveLength(4);
       expect(result.data.entries).toHaveLength(1);
+      expect(result.data.preferences.diet).toBe('no_preference');
     }
+  });
+
+  it('migrates a v0.2 backup and fills personalization defaults', () => {
+    const v2 = {
+      ...data,
+      schemaVersion: 2
+    };
+    delete (v2 as Record<string, unknown>).preferences;
+    delete (v2 as Record<string, unknown>).sms;
+    delete (v2 as Record<string, unknown>).cloudSync;
+    delete (v2 as Record<string, unknown>).chatMessages;
+
+    const result = validatePersistedData(v2);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.schemaVersion).toBe(3);
+      expect(result.data.preferences.trackingStyle).toBe('detailed');
+      expect(result.data.sms.enabled).toBe(false);
+      expect(result.data.cloudSync.enabled).toBe(false);
+      expect(result.data.chatMessages).toEqual([]);
+      expect(result.data.entries).toHaveLength(1);
+    }
+  });
+
+  it('excludes phone numbers from exported backups', () => {
+    const redacted = redactForExport({
+      ...data,
+      sms: { enabled: true, phone: '+15551234567', consentAt: 10 }
+    });
+    expect(redacted.sms.phone).toBe('');
+    expect(redacted.sms.enabled).toBe(false);
+    expect(redacted.entries).toHaveLength(1);
   });
 });

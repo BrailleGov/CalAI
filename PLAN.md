@@ -1,8 +1,10 @@
 # CalAI — product plan
 
-Status: **v0.2.0 is shipped (alpha).** v0.3 is planned and awaits a separate go.
+Status: **v0.3.0 is live (alpha).** The Cloudflare Worker is deployed with KV, D1, all runtime
+secrets, and VAPID keys, and the Pages build injects `VITE_API_BASE`. Remaining release work is
+physical-device verification, an end-to-end SMS delivery check, and the formal AI eval.
 
-Last updated: 2026-10-24
+Last updated: 2026-10-25
 Live: <https://braillegov.github.io/CalAI/>
 Handoff notes and resume prompt: [NOTES.md](NOTES.md)
 
@@ -42,10 +44,10 @@ and how CalAI covers it.
 | Weight logging | Yes | Weight + trend line, 7-day average | **v0.2** |
 | Reminders | Yes (push) | In-app + `.ics` live; Web Push code ready behind config | **v0.2** |
 | Water and exercise | Yes | Water quick add live; exercise still out of the budget | **v0.2** |
-| Photo food recognition | Common in AI apps | Camera/upload → candidates → confirm | v0.3 |
-| Natural-language logging | Emerging | "Two eggs and toast" → draft entries → confirm | v0.3 |
-| LLM chat about your data | Emerging | Read-only Q&A over aggregates; write actions confirm | v0.3 |
-| Voice logging | Some | Web Speech dictation into text logging | v0.3 |
+| Photo food recognition | Common in AI apps | Camera/upload → candidates → confirm | **v0.3** |
+| Natural-language logging | Emerging | "Two eggs and toast" → draft entries → confirm | **v0.3** |
+| LLM chat about your data | Emerging | Read-only Q&A over aggregates; write actions confirm | **v0.3** |
+| Voice logging | Some | Web Speech dictation into text logging | Deferred (browser support) |
 | Accounts and sync | Yes | Optional, encrypted; not required | v1.0+ |
 | Wearables / Health apps | Yes | Limited on web; import/export first | Later |
 | Social / challenges | Common | Explicitly out of scope | — |
@@ -148,14 +150,79 @@ passes with the new injectManifest
 service worker. Lighthouse was not re-run after the v0.2 bundle change, and the Worker/push
 tiers were not deployed.
 
-### v0.3 — AI logging and chat (planned)
+### v0.3 — AI logging, coach, and personalization (shipped as v0.3.0)
 
-- Photo recognition: capture/upload → food candidates with portions → correction sheet → log.
-- Natural-language logging and optional voice dictation using the same confirmation sheet.
-- Chat: questions answered from locally computed aggregates; optional read-only tools.
-- Weekly recap generated from the user's data, with the data window shown.
-- Consent, quotas, provider fallback, and an evaluation set before release.
-- Write actions (log via chat) land only after confirmation UX is proven.
+Goal: remove typing and personalize the app without giving up local-first storage or
+confirmation before writes.
+
+Shipped:
+
+- **Onboarding expansion.** Goal and pace sliders, optional target weight, optional
+  muscle-group priority sliders, tracking style, feature shortcuts, food preference,
+  cuisines, and an avoid list. Everything is editable in Settings.
+- **Photo recognition.** DeepSeek vision identifies multiple foods, returns portions,
+  confidence, and nutrition estimates; the client downscales/strips EXIF, matches library
+  foods, and requires confirmation before logging.
+- **Natural-language logging.** DeepSeek parses text into editable items; a conservative
+  offline matcher handles simple phrases without a network or AI consent.
+- **AI coach.** Grounded in locally computed 7/14/30-day aggregates, preferences, weight, and
+  water; answers cite the window, show suggestions, and can propose entries that only log
+  after explicit confirmation.
+- **Recipe book.** 11 curated recipes built from seed foods with instructions, tags, diet
+  filters, personalized ordering, AI generation, and AI “picks for you”. User recipes gained
+  method steps.
+- **Expanded food library.** ≈220 seed foods with categories and browseable filters.
+- **Encrypted cloud backup.** Device-scoped D1 snapshots encrypted with AES-GCM; no account.
+- **Outbound SMS reminders.** Textbelt integration with consent, quiet hours, dedupe, caps,
+  encrypted phone storage, and “replies are not monitored” copy.
+- **Security.** Server-side DeepSeek/Textbelt keys, device token hashes, typed D1 access,
+  request caps, image validation, output sanitization, and no content logging.
+- **Testing.** 88 unit tests and 34 Playwright tests, plus a configured-AI Playwright suite
+  that passed against mocked Worker responses when built with `VITE_API_BASE`. Includes axe
+  scans of the new screens.
+
+Deployment completed on 2026-10-25:
+
+- Worker `calai-api` deployed at <https://calai-api.braille.workers.dev> with KV `CALAI_CACHE`,
+  D1 `calai`, migrations applied, and secrets for DeepSeek, Textbelt, `DATA_ENC_KEY`, and
+  VAPID. `/health` reports search, AI, sync, SMS, and push as available.
+- Pages CI now runs the local-first suite, rebuilds with `VITE_API_BASE` and the public VAPID
+  key, runs the configured-AI suite, and deploys that bundle.
+- Verified through live HTTP: CORS, KV-cached Open Food Facts search, device registration,
+  encrypted snapshot PUT/GET/DELETE (404 after delete), DeepSeek text parse, coach answer with
+  a stated 7-day window, recipe generation, and vision on a real banana photo. A browser run
+  against the production bundle logged AI-parsed items, enabled and deleted cloud backup, and
+  received a grounded coach reply.
+- Fixed a router bug where handler promises were returned without `await`, so typed errors
+  escaped the catch and surfaced as Cloudflare 1101 errors. All handlers now await.
+
+Not yet verified / deferred:
+
+- SMS is provider-accepted (quota 193 → 192 on an earlier consented test) but cron delivery,
+  quiet hours, cap handling, opt-out, and carrier receipt need a consented end-to-end run.
+- Physical iOS/Android camera, installed-PWA push, and storage-eviction behavior are untested.
+- No formal AI eval or cost measurement; abuse protection is quota-only.
+- No accounts/sync merge; cloud backup is last-write-wins.
+- USDA is unconfigured and untested live; Voice dictation is deferred.
+- Local `wrangler dev` still fails to start workerd on this Windows/Node 20 machine.
+
+v0.3 acceptance check:
+
+- Onboarding saves goal, target weight, muscle priorities, and usage preferences and they are
+  editable later.
+- AI photo/text output is editable, confidence-labelled, and never logged without confirmation.
+- The coach uses local aggregates only and proposes writes with a confirm step.
+- Recipe book, saved recipes, and AI recipes produce per-serving nutrition and log to a meal.
+- SMS is outbound only, consent-gated, deduplicated, and excludes health values.
+- Cloud snapshots and phone numbers are encrypted at rest and device-scoped.
+- 360/390 px layouts do not overflow; axe reports 0 A/AA violations; initial JS stays under
+  200 KB gzip.
+
+Verified on 2026-10-25: 88 unit tests; 35 Playwright tests (34 in the local-first build, the
+configured-AI test against a mocked Worker); axe 0 violations on new screens; no horizontal
+overflow; initial JS 117.1 KB gzip, CSS 8.9 KB gzip. Live deployment checks listed above
+passed, including a real banana photo. Textbelt accepted one consented test text; quota moved
+193 → 192. Deployment smoke rows were removed from D1 afterwards.
 
 ### v1.0 — Public launch (planned)
 
@@ -265,12 +332,13 @@ Estimates are solo build days, not calendar promises.
 | M5 | v0.1 QA and deploy | PWA, a11y, device pass, Actions deploy | **done** |
 | M6 | v0.2 data | Worker, OFF/USDA search, barcode, recipes | **done** |
 | M7 | v0.2 retention | Weight, water, reminders, push code | **done** |
-| M8 | v0.3 AI input | Worker AI proxy, photo + text logging, eval | 7 |
-| M9 | v0.3 chat | Context builder, chat UI, guardrails, recap | 5 |
+| M8 | v0.3 AI input | Worker AI proxy, photo + text logging, eval | **done locally** |
+| M9 | v0.3 chat | Context builder, chat UI, guardrails, recipes | **done locally** |
 | M10 | v1.0 launch | Accounts/sync, legal, audits, migration | 8+ |
 
-v0.1 shipped as M1–M5. v0.2 shipped as M6–M7 with Worker deployment and push credentials still
-pending. Next up is v0.3 (M8–M9), pending a go-ahead.
+v0.1 shipped as M1–M5. v0.2 shipped as M6–M7. v0.3 shipped as M8–M9 and is deployed: the
+Worker, KV, D1, migrations, secrets, VAPID keys, and production `VITE_API_BASE` are live.
+Remaining v0.3 verification is physical-device and SMS delivery testing plus the AI eval.
 
 ## 9. Non-goals
 
@@ -287,11 +355,13 @@ pending. Next up is v0.3 (M8–M9), pending a go-ahead.
 | --- | --- | --- |
 | Browser limits on background reminders | Missed reminders | Push for installed PWAs; set expectations; `.ics` fallback |
 | iOS PWA storage eviction | Lost diary | Request persistent storage; export; clear backups |
-| AI nutrition errors | Wrong totals, trust loss | Confirmation, confidence, editable portions, eval set |
-| AI cost/abuse | Runaway bill | Worker quotas, device tokens, global budget cap |
+| AI nutrition errors | Wrong totals, trust loss | Confirmation, confidence, editable portions, live provider smoke tests; formal eval set still pending |
+| AI cost/abuse | Runaway bill | Worker daily quotas, monthly request cap, device/IP keys, server-side key; add Turnstile/accounts before public scale |
+| SMS abuse/compliance | Unwanted texts, cost | Explicit consent, outbound only, quiet hours, per-day cap, dedupe, encrypted phone, easy off |
+| Cloud snapshot leak | Health data exposure | Device-scoped auth, AES-GCM at rest, no phone in snapshots, delete action; no multi-device merge yet |
 | Food DB quality/licensing | Bad data, legal | Show source, cache, ODbL/USDA attribution, seed verified foods |
 | Open Food Facts availability/relevance | Search feels empty or wrong or 503s | Graceful local fallback, brand/category queries, Worker cache, optional USDA |
-| Worker/VAPID not configured | No cached search, USDA, or push | Direct OFF fallback; `.ics` reminders; documented one-command deploy path |
+| Worker outage or misconfiguration | Search/AI/cloud/SMS unavailable | Local diary and OFF fallback, `/health` capability flags, documented redeploy path |
 | GitHub Pages static limits | No headers, no server | Worker for dynamic; meta CSP; hash routing |
 | Health-data sensitivity | Privacy harm | Local-first, no raw data to AI by default, consent, export/delete |
 | Scope creep | v0.1 stalls | This release gate; everything else is explicitly deferred |
@@ -315,18 +385,37 @@ Settled for v0.2:
 - Reminders off by default; in-app + `.ics` are the guaranteed tier; push is opt-in.
 - No accounts, no analytics, no server-side diary.
 
+Settled for v0.3:
+
+- DeepSeek `deepseek-flash` (served by DeepSeek-V4.1-Flash-1017) is the AI provider. The key
+  is a Worker secret; the client never sees it.
+- AI is opt-in and off by default except offline text matching. Consent is explicit and
+  revocable in Settings.
+- Photo/text results are estimates, editable, confidence-labelled, and never auto-logged.
+- Chat context is locally computed aggregates only; write proposals require confirmation.
+- Schema v3 on localStorage; Cloudflare D1 is used only for optional encrypted cloud backup,
+  SMS preferences, and device auth.
+- Cloud snapshots and SMS phone numbers use AES-GCM with a server-side key. SMS is outbound
+  only via Textbelt, consent-gated, deduped, and excluded from backups.
+- Recipe book stays lightweight and is built from the same seed foods as the diary.
+
 Pending before their releases:
 
-1. AI provider and monthly budget cap (v0.3).
-2. Deploy the Cloudflare Worker with KV and set `VITE_API_BASE` (v0.2.x).
-3. USDA FoodData Central API key and data-source attribution page (v0.2.x/v1.0).
-4. Generate VAPID keys and test push on installed iOS/Android PWAs (v0.2.x).
-5. Accounts and encrypted sync design (v1.0).
+1. ~~Deploy the Cloudflare Worker with KV + D1 and rebuild Pages with `VITE_API_BASE`.~~
+   Done 2026-10-25; keys still need rotation because they were shared in chat.
+2. Verify SMS cron delivery, quiet hours, test text, and opt-out with a consented number, and
+   confirm carrier receipt (v0.3.x).
+3. USDA FoodData Central API key and data-source attribution page (v0.3.x/v1.0).
+4. Test push on installed iOS/Android PWAs; VAPID keys and the subscription endpoint are live
+   (v0.3.x).
+5. Accounts and multi-device sync design; current cloud backup is device-scoped and
+   last-write-wins (v1.0).
 6. Monetisation, if any (post-alpha).
-7. Legal review and public contact address (v1.0).
-8. Design refinement beyond the current utilitarian direction (v0.2.x).
+7. Legal review, public contact address, AI disclaimer page (v1.0).
+8. Formal AI eval set, cost measurement, and budget alerts (v0.3.x).
+9. Design refinement beyond the current utilitarian direction (v0.3.x).
 
-Storage decision: synchronous localStorage remains in v0.2, now schema v2 (remote-food
-cache capped at 100, recipes, weights, water, reminders). A bounded one-time IndexedDB read
-still recovers v0.1.0 diaries. Revisit granular IndexedDB in v0.3 only if payload size or
-write latency justifies the migration; do not reintroduce an async boot gate.
+Storage decision: synchronous localStorage remains in v0.3, now schema v3 (personalization,
+SMS prefs, cloud-sync state, local chat transcript). Cloud snapshots are optional, encrypted,
+and device-scoped. A bounded one-time IndexedDB read still recovers v0.1.0 diaries. Do not
+reintroduce an async boot gate.

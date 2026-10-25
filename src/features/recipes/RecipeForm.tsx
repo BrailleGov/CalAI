@@ -12,6 +12,7 @@ export type RecipeFormValues = {
   name: string;
   servings: number;
   ingredients: RecipeIngredient[];
+  instructions?: string[];
 };
 
 type RecipeFormProps = {
@@ -30,6 +31,9 @@ export function RecipeForm({ initial, submitLabel, onSubmit }: RecipeFormProps) 
   const [servings, setServings] = useState(String(initial?.servings ?? 2));
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>(
     initial ? initial.ingredients.map((item) => ({ ...item })) : []
+  );
+  const [instructions, setInstructions] = useState(
+    initial?.instructions?.join('\n') ?? ''
   );
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
@@ -104,7 +108,12 @@ export function RecipeForm({ initial, submitLabel, onSubmit }: RecipeFormProps) 
     onSubmit({
       name: name.trim(),
       servings: servingsValue,
-      ingredients
+      ingredients,
+      instructions: instructions
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .slice(0, 30)
     });
   }
 
@@ -227,6 +236,18 @@ export function RecipeForm({ initial, submitLabel, onSubmit }: RecipeFormProps) 
           </div>
         </div>
       ) : null}
+
+      <label className="field">
+        <span className="field-label">Method (optional)</span>
+        <textarea
+          className="textarea"
+          value={instructions}
+          onChange={(event) => setInstructions(event.target.value)}
+          placeholder={'One step per line\nCook the rice\nSear the chicken…'}
+          rows={5}
+        />
+        <span className="field-hint">Shown when you open the recipe later.</span>
+      </label>
 
       {error ? <p className="field-error" role="alert">{error}</p> : null}
 

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import type { Entry, Meal, Reminder } from '../../types';
 import { MEALS, MEAL_LABELS } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { ProgressRing } from '../../components/ProgressRing';
 import { AddFoodSheet } from './AddFoodSheet';
 import { EntryEditSheet } from './EntryEditSheet';
+import { AiLogSheet } from '../ai/AiLogSheet';
 import {
   addDays,
   formatDayLong,
@@ -26,12 +27,22 @@ import { clamp01, formatDecimal, formatNumber } from '../../lib/format';
 import { dismissReminder, dueReminder, wasReminderDismissed } from '../../lib/reminders';
 import {
   IconBell,
+  IconCamera,
   IconChevronLeft,
   IconChevronRight,
   IconPlus,
+  IconSparkles,
   IconWater,
   IconX
 } from '../../components/icons';
+
+function mealForNow(date = new Date()): Meal {
+  const hour = date.getHours();
+  if (hour < 11) return 'breakfast';
+  if (hour < 15) return 'lunch';
+  if (hour < 21) return 'dinner';
+  return 'snack';
+}
 
 function MacroBar({
   label,
@@ -80,10 +91,14 @@ export function TodayPage() {
   const deleteWater = useAppStore((state) => state.deleteWater);
   const reminders = useAppStore((state) => state.reminders);
   const settings = useAppStore((state) => state.settings);
+  const preferences = useAppStore((state) => state.preferences);
 
   const [addMeal, setAddMeal] = useState<Meal | null>(null);
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [due, setDue] = useState<Reminder | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiMode, setAiMode] = useState<'photo' | 'text'>('photo');
+  const [aiMeal, setAiMeal] = useState<Meal>('lunch');
 
   const safeDate = date || today;
   const dayEntries = useMemo(
@@ -167,6 +182,60 @@ export function TodayPage() {
         <button type="button" className="jump-today" onClick={() => navigate('/today')}>
           Jump to today
         </button>
+      ) : null}
+
+      {preferences.photoLogging || preferences.textLogging || preferences.aiChat ? (
+        <section className="quick-log" aria-label="Faster logging">
+          <div className="quick-log-head">
+            <span className="eyebrow">Log faster</span>
+            <span>Review before saving</span>
+          </div>
+          <div className="quick-log-actions">
+            {preferences.photoLogging ? (
+              <button
+                type="button"
+                className="quick-log-action"
+                onClick={() => {
+                  setAiMode('photo');
+                  setAiMeal(mealForNow());
+                  setAiOpen(true);
+                }}
+              >
+                <IconCamera size={19} />
+                <span>
+                  <strong>Photo</strong>
+                  <small>Recognise a meal</small>
+                </span>
+              </button>
+            ) : null}
+            {preferences.textLogging ? (
+              <button
+                type="button"
+                className="quick-log-action"
+                onClick={() => {
+                  setAiMode('text');
+                  setAiMeal(mealForNow());
+                  setAiOpen(true);
+                }}
+              >
+                <IconSparkles size={19} />
+                <span>
+                  <strong>Describe</strong>
+                  <small>Type what you ate</small>
+                </span>
+              </button>
+            ) : null}
+            {preferences.aiChat ? (
+              <Link to="/assistant" className="quick-log-action">
+                <IconSparkles size={19} />
+                <span>
+                  <strong>Coach</strong>
+                  <small>Ask about your week</small>
+                </span>
+              </Link>
+            ) : null}
+          </div>
+        </section>
       ) : null}
 
       {due ? (
@@ -365,6 +434,17 @@ export function TodayPage() {
         onClose={() => setAddMeal(null)}
       />
       <EntryEditSheet entry={editEntry} onClose={() => setEditEntry(null)} />
+      <AiLogSheet
+        open={aiOpen}
+        meal={aiMeal}
+        date={date}
+        initialMode={aiMode}
+        onClose={() => setAiOpen(false)}
+        onManualSearch={() => {
+          setAiOpen(false);
+          setAddMeal(aiMeal);
+        }}
+      />
     </div>
   );
 }

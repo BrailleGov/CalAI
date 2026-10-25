@@ -3,11 +3,13 @@ import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-d
 import { useAppStore } from './store/useAppStore';
 import { ToastProvider, useToast } from './components/Toast';
 import { AppShell } from './components/AppShell';
+import { SyncManager } from './components/SyncManager';
 import { Onboarding } from './features/onboarding/Onboarding';
 import { TodayPage } from './features/today/TodayPage';
 import { FoodsPage } from './features/foods/FoodsPage';
 import { RecipesPage } from './features/recipes/RecipesPage';
 import { HistoryPage } from './features/history/HistoryPage';
+import { AssistantPage } from './features/ai/AssistantPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { needsLegacyCheck, readLegacyState } from './lib/legacy';
 
@@ -83,6 +85,7 @@ function Root() {
         <Route path="/day/:date" element={<TodayPage />} />
         <Route path="/foods" element={<FoodsPage />} />
         <Route path="/recipes" element={<RecipesPage />} />
+        <Route path="/assistant" element={<AssistantPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/today" replace />} />
@@ -97,6 +100,7 @@ export default function App() {
       <ToastProvider>
         <ScrollToTop />
         <ThemeSync />
+        <SyncManager />
         <Root />
       </ToastProvider>
     </HashRouter>

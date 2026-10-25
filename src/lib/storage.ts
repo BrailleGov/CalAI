@@ -20,10 +20,10 @@ export const storageAvailable = (() => {
 })();
 
 /**
- * State lives in localStorage in v0.1 because async IndexedDB hydration could hang the
- * whole app when storage is blocked (private windows, strict privacy settings, in-app
- * browsers). The diary is small enough for localStorage; v0.2 moves the growing data set
- * back to IndexedDB behind a migration.
+ * State lives in localStorage because async IndexedDB hydration could hang the whole app
+ * when storage is blocked (private windows, strict privacy settings, in-app browsers). The
+ * diary is small enough for localStorage; schema v3 keeps this synchronous so no boot gate is
+ * reintroduced. Optional encrypted cloud backup is separate and opt-in.
  */
 export const stateStorage: PersistStorage<PersistedData> = {
   getItem: (name) => {

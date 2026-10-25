@@ -16,7 +16,35 @@ export type Nutrients = {
   fat: number;
 };
 
-export const SCHEMA_VERSION = 2 as const;
+export const SCHEMA_VERSION = 3 as const;
+
+export const FOOD_CATEGORIES = [
+  'protein',
+  'dairy',
+  'grains',
+  'fruit',
+  'vegetables',
+  'fats',
+  'drinks',
+  'meals',
+  'snacks',
+  'condiments'
+] as const;
+
+export type FoodCategory = (typeof FOOD_CATEGORIES)[number];
+
+export const FOOD_CATEGORY_LABELS: Record<FoodCategory, string> = {
+  protein: 'Protein',
+  dairy: 'Dairy & eggs',
+  grains: 'Grains & legumes',
+  fruit: 'Fruit',
+  vegetables: 'Vegetables',
+  fats: 'Fats & nuts',
+  drinks: 'Drinks',
+  meals: 'Meals',
+  snacks: 'Snacks',
+  condiments: 'Sauces & extras'
+};
 
 export type FoodSource = 'seed' | 'custom' | 'off' | 'usda' | 'recipe';
 
@@ -30,6 +58,7 @@ export type Food = {
   nutrients: Nutrients;
   source: FoodSource;
   createdAt: number;
+  category?: FoodCategory;
 };
 
 export type Entry = {
@@ -57,6 +86,34 @@ export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'ver
 
 export type Goal = 'lose' | 'maintain' | 'gain';
 
+export const MUSCLE_GROUPS = [
+  'chest',
+  'back',
+  'shoulders',
+  'arms',
+  'core',
+  'glutes',
+  'legs'
+] as const;
+
+export type MuscleGroup = (typeof MUSCLE_GROUPS)[number];
+
+export const MUSCLE_LABELS: Record<MuscleGroup, string> = {
+  chest: 'Chest',
+  back: 'Back',
+  shoulders: 'Shoulders',
+  arms: 'Arms',
+  core: 'Core',
+  glutes: 'Glutes',
+  legs: 'Legs'
+};
+
+/**
+ * Optional training emphasis, 0–100 per group. This is a preference for recipe and
+ * coaching language, not a body measurement or a medical target.
+ */
+export type MuscleFocus = Partial<Record<MuscleGroup, number>>;
+
 export type Profile = {
   sex: Sex;
   age: number;
@@ -65,6 +122,10 @@ export type Profile = {
   activity: ActivityLevel;
   goal: Goal;
   rateKgPerWeek: number;
+  /** Optional target the user chose to set. Never inferred. */
+  targetWeightKg?: number;
+  /** Optional training emphasis chosen with sliders. */
+  muscleFocus?: MuscleFocus;
 };
 
 export type ThemeSetting = 'dark' | 'light' | 'system';
@@ -77,6 +138,85 @@ export type Settings = {
   waterGoalMl: number;
 };
 
+export const TRACKING_STYLES = ['quick', 'detailed'] as const;
+export type TrackingStyle = (typeof TRACKING_STYLES)[number];
+
+export const TRACKING_STYLE_LABELS: Record<TrackingStyle, string> = {
+  quick: 'One-tap logging',
+  detailed: 'Full diary and macros'
+};
+
+export const DIET_PATTERNS = [
+  'no_preference',
+  'omnivore',
+  'vegetarian',
+  'vegan',
+  'pescatarian',
+  'halal',
+  'kosher',
+  'other'
+] as const;
+
+export type DietPattern = (typeof DIET_PATTERNS)[number];
+
+export const DIET_LABELS: Record<DietPattern, string> = {
+  no_preference: 'No preference',
+  omnivore: 'Omnivore',
+  vegetarian: 'Vegetarian',
+  vegan: 'Vegan',
+  pescatarian: 'Pescatarian',
+  halal: 'Halal',
+  kosher: 'Kosher',
+  other: 'Other'
+};
+
+export const CUISINE_OPTIONS = [
+  'Mediterranean',
+  'Asian',
+  'Indian',
+  'Latin American',
+  'Middle Eastern',
+  'Italian',
+  'Comfort food',
+  'High protein',
+  'Vegetarian',
+  'Quick meals'
+] as const;
+
+export type Preferences = {
+  trackingStyle: TrackingStyle;
+  photoLogging: boolean;
+  textLogging: boolean;
+  aiChat: boolean;
+  recipeIdeas: boolean;
+  /** Epoch ms of explicit AI consent, or null when AI requests must not be sent. */
+  aiConsentAt: number | null;
+  diet: DietPattern;
+  avoidIngredients: string[];
+  cuisines: string[];
+};
+
+export type SmsPreferences = {
+  enabled: boolean;
+  phone: string;
+  consentAt: number | null;
+  lastTestAt?: number;
+};
+
+export type CloudSyncSettings = {
+  enabled: boolean;
+  lastSyncedAt: number | null;
+};
+
+export type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: number;
+  window?: string;
+  error?: boolean;
+};
+
 export type RecipeIngredient = {
   foodId?: string;
   name: string;
@@ -85,11 +225,17 @@ export type RecipeIngredient = {
   nutrients: Nutrients;
 };
 
+export type RecipeSource = 'user' | 'ai' | 'curated';
+
 export type Recipe = {
   id: string;
   name: string;
   servings: number;
   ingredients: RecipeIngredient[];
+  description?: string;
+  instructions?: string[];
+  tags?: string[];
+  source?: RecipeSource;
   createdAt: number;
   updatedAt: number;
 };
@@ -137,6 +283,10 @@ export type PersistedData = {
   water: WaterEntry[];
   reminders: ReminderSettings;
   settings: Settings;
+  preferences: Preferences;
+  sms: SmsPreferences;
+  cloudSync: CloudSyncSettings;
+  chatMessages: ChatMessage[];
 };
 
 export type BackupFile = {
@@ -195,3 +345,36 @@ export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
   quietEnd: '07:00',
   items: DEFAULT_REMINDERS
 };
+
+export const DEFAULT_PREFERENCES: Preferences = {
+  trackingStyle: 'detailed',
+  photoLogging: false,
+  textLogging: true,
+  aiChat: false,
+  recipeIdeas: false,
+  aiConsentAt: null,
+  diet: 'no_preference',
+  avoidIngredients: [],
+  cuisines: []
+};
+
+export const DEFAULT_SMS: SmsPreferences = {
+  enabled: false,
+  phone: '',
+  consentAt: null
+};
+
+export const DEFAULT_CLOUD_SYNC: CloudSyncSettings = {
+  enabled: false,
+  lastSyncedAt: null
+};
+
+export function hasAiAccess(preferences: Preferences): boolean {
+  return (
+    preferences.aiConsentAt !== null &&
+    (preferences.photoLogging ||
+      preferences.textLogging ||
+      preferences.aiChat ||
+      preferences.recipeIdeas)
+  );
+}

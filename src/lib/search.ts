@@ -17,7 +17,8 @@ export function rankFoods(
   foods: Food[],
   query: string,
   favorites: string[],
-  recents: string[]
+  recents: string[],
+  limit = 60
 ): Food[] {
   const normalizedQuery = normalizeText(query);
   const favoriteSet = new Set(favorites);
@@ -52,7 +53,7 @@ export function rankFoods(
 
       return a.name.localeCompare(b.name);
     })
-    .slice(0, 60);
+    .slice(0, limit);
 }
 
 export function mealOrder(meal: Meal): number {

@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
-import type { Food } from '../../types';
-import { FOOD_SOURCE_LABELS } from '../../types';
+import type { Food, FoodCategory } from '../../types';
+import {
+  FOOD_CATEGORIES,
+  FOOD_CATEGORY_LABELS,
+  FOOD_SOURCE_LABELS
+} from '../../types';
 import { SEED_FOODS } from '../../data/seedFoods';
 import { useAppStore } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast';
@@ -30,6 +34,7 @@ export function FoodsPage() {
   const toast = useToast();
 
   const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<'all' | FoodCategory>('all');
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Food | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -38,9 +43,16 @@ export function FoodsPage() {
     () => [...customFoods, ...remoteFoods, ...SEED_FOODS],
     [customFoods, remoteFoods]
   );
+  const filteredFoods = useMemo(
+    () =>
+      category === 'all'
+        ? allFoods
+        : allFoods.filter((food) => food.category === category),
+    [allFoods, category]
+  );
   const results = useMemo(
-    () => rankFoods(allFoods, query, favorites, recentFoodIds),
-    [allFoods, favorites, query, recentFoodIds]
+    () => rankFoods(filteredFoods, query, favorites, recentFoodIds, 250),
+    [favorites, filteredFoods, query, recentFoodIds]
   );
   const favoriteSet = new Set(favorites);
 
@@ -109,8 +121,36 @@ export function FoodsPage() {
         />
       </label>
 
+      <div className="chip-row category-chips" aria-label="Food categories">
+        <button
+          type="button"
+          className={`chip${category === 'all' ? ' is-active' : ''}`}
+          aria-pressed={category === 'all'}
+          onClick={() => setCategory('all')}
+        >
+          All
+        </button>
+        {FOOD_CATEGORIES.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={`chip${category === value ? ' is-active' : ''}`}
+            aria-pressed={category === value}
+            onClick={() => setCategory(value)}
+          >
+            {FOOD_CATEGORY_LABELS[value]}
+          </button>
+        ))}
+      </div>
+
       <div className="list-heading">
-        <span>{query ? 'Results' : 'All foods'}</span>
+        <span>
+          {query
+            ? 'Results'
+            : category === 'all'
+              ? 'All foods'
+              : FOOD_CATEGORY_LABELS[category]}
+        </span>
         <span>{results.length}</span>
       </div>
 
@@ -128,6 +168,7 @@ export function FoodsPage() {
                 </span>
                 <span className="food-meta">
                   {food.servingLabel} · {formatNumber(food.nutrients.kcal)} kcal
+                  {food.category ? ` · ${FOOD_CATEGORY_LABELS[food.category]}` : ''}
                 </span>
               </div>
               <div className="row-actions">
@@ -163,13 +204,15 @@ export function FoodsPage() {
         })}
         {results.length === 0 ? (
           <li className="empty-note">
-            Nothing matches “{query}”. Create a custom food to add it to your library.
+            Nothing matches “{query}” in this category. Create a custom food or choose another
+            category.
           </li>
         ) : null}
       </ul>
 
       <p className="fine-print">
-        Star foods to keep them at the top when logging. Logging happens from the Today screen.
+        Star foods to keep them at the top when logging. Seed values are rounded public nutrition
+        references; check the label when precision matters.
       </p>
 
       <Sheet
