@@ -8,7 +8,9 @@ for v0.2/v0.3. Nothing in the "planned" sections is implemented yet.
 
 ```mermaid
 flowchart LR
-  PWA["CalAI PWA<br/>React + TypeScript"] -->|read/write| IDB[("IndexedDB<br/>on device")]
+  PWA["CalAI PWA<br/>React + TypeScript"] -->|sync read/write| LS[("localStorage<br/>calai:v1")]
+  PWA -.->|one-time recovery| LegacyIDB[("IndexedDB<br/>v0.1.0 diary")]
+  PWA -.->|v0.2 as data grows| IDB[("IndexedDB<br/>planned")]
   PWA -->|static assets| Pages["GitHub Pages<br/>/CalAI/"]
   PWA -.->|v0.2 search, AI, push| Worker["Cloudflare Worker<br/>API"]
   Worker -.-> OFF["Open Food Facts"]
@@ -29,7 +31,9 @@ Chosen and shipped in v0.1:
 - **Vite** (v6 line, compatible with the installed Node 20.12) + **React 18** + **TypeScript**.
 - **HashRouter** (`#/today`, `#/foods`, …) so deep links work on GitHub Pages without a
   rewrite hack, including offline.
-- **Zustand** for app state, with the persist middleware backed by **idb-keyval** (IndexedDB).
+- **Zustand** for app state, with the persist middleware backed by a synchronous
+  **localStorage** adapter (`calai:v1`). **idb-keyval** is used only for a bounded one-time
+  read of the v0.1.0 IndexedDB diary.
 - **HashRouter** routes: `#/today`, `#/day/YYYY-MM-DD`, `#/foods`, `#/history`, `#/settings`.
 - **Plain CSS** with design tokens; no UI kit. Avoids restyling fights and keeps the payload small.
 - **vite-plugin-pwa** (Workbox) for the manifest, icons, and precached app shell.
@@ -158,12 +162,24 @@ migrations.
 
 ### v0.1 persistence
 
-- One IndexedDB key (`calai:v1`) via `idb-keyval`, written by Zustand's persist middleware.
-- Hydration is gated: the app renders a quiet splash until storage resolves, then either
-  onboarding or the diary. This prevents an onboarding flash.
-- Writes go through Zustand persist to a single IndexedDB key; the payload is small (text only).
-- Storage is requested persistent on first successful log (`navigator.storage.persist()`)
-  where supported.
+v0.1.0 shipped with asynchronous IndexedDB hydration. When IndexedDB was blocked (privacy
+settings, private windows, in-app browsers) or an open request never settled, the app stayed
+on its opening screen forever. v0.1.1 removes that failure mode:
+
+- The diary is a synchronous localStorage document at `calai:v1`, written by Zustand persist.
+  There is no storage-driven splash and no async gate before onboarding.
+- `calai-theme` mirrors the theme setting for the pre-hydration inline script.
+- `calai:legacy-checked` records that the one-time IndexedDB migration was attempted.
+- On first run, a **bounded background read** (1.2 s timeout) of the old `calai:v1` IndexedDB
+  key via `idb-keyval` imports a v0.1.0 diary only if the current state is empty. The UI is
+  already interactive while this happens; a toast confirms a restore. A missing, blocked, or
+  corrupt legacy store is ignored and marked checked.
+- localStorage writes are wrapped in try/catch. If storage is blocked entirely, the app runs
+  in memory and shows a persistent warning; nothing silently hangs.
+- Corrupt persisted JSON is discarded so the app falls back to onboarding instead of crashing.
+- Storage is requested persistent on first log (`navigator.storage.persist()`) where supported.
+- Payload size is small (entries, custom foods, settings; seed foods are static). v0.2 moves
+  the growing data set back to granular IndexedDB stores with a migration.
 - Export envelope: `{ app: "calai", schemaVersion: 1, exportedAt, data }`. Import validates
   the envelope and every nutrient number; unknown keys are dropped.
 
@@ -348,7 +364,7 @@ The Worker sets its own CSP/CORS headers.
 ## 14. Build order
 
 1. Scaffold Vite/React/TS, tokens, shell, routing, PWA manifest.
-2. Store + IndexedDB hydration + seed foods + target math (unit tests).
+2. Store + synchronous persistence + seed foods + target math (unit tests).
 3. Onboarding and target review.
 4. Diary: day navigation, meals, entries, quick add, portion sheet.
 5. Food library: search, custom foods, recents, favorites.
@@ -356,24 +372,28 @@ The Worker sets its own CSP/CORS headers.
 7. QA: 360/390 px, keyboard, offline, reload persistence, auth-free install.
 8. Actions workflow, switch Pages source, verify live URL and custom 404.
 
-v0.1 shipped on 2026-10-24 and the acceptance list in [../PLAN.md](../PLAN.md#3-releases)
-passes on the live site.
+v0.1.0 shipped on 2026-10-24; v0.1.1 hardens storage. The acceptance list in
+[../PLAN.md](../PLAN.md#3-releases) passes on the live site.
 
 
 ## 15. v0.1 verification record
 
-- Unit tests: 24 passing across nutrition/target math, date keys, food search, and backup
-  validation.
+- Unit tests: 27 passing across nutrition/target math, date keys, food search, backup
+  validation, and legacy IndexedDB state parsing.
 - Browser smoke (Edge, 390 × 844, mobile emulation): onboarding in metric and imperial,
   logging from search, quick add, custom foods, entry edit/delete, export/import, reset,
   validation errors, theme persistence across reloads, scroll reset on navigation, Escape
   closing sheets, and a full offline reload served by the service worker.
 - Layout: no horizontal overflow at 360 px or 390 px; frame caps at 560 px on desktop.
+- Storage recovery: blocked IndexedDB no longer blocks onboarding; a seeded v0.1.0
+  IndexedDB diary migrates to localStorage; blocked localStorage shows a warning and the app
+  remains usable in memory; corrupt persisted JSON recovers to onboarding.
 - PWA: manifest resolves at `/CalAI/manifest.webmanifest` with `/CalAI/` scope and three
   icons; service worker registers and controls the page on the live HTTPS origin.
 - axe-core: 0 WCAG 2.1 A/AA violations across onboarding, diary, add/edit sheets, foods,
   history, and settings in dark and light themes.
 - Lighthouse mobile (production build): Performance 99, Accessibility 100, Best Practices
   100, SEO 60 (intentional `noindex` during alpha).
-- Bundle: initial JS 72.9 KB gzip, CSS 5.8 KB gzip.
+- Bundle: initial JS 73.3 KB gzip, CSS 5.8 KB gzip.
 - Live: <https://braillegov.github.io/CalAI/>, custom 404 served, HTTP redirects to HTTPS.
+- Version: v0.1.1.

@@ -356,7 +356,7 @@ export function SettingsPage() {
       <section className="settings-section" aria-labelledby="about-heading">
         <div className="card-head card-head-flush">
           <h2 id="about-heading">About</h2>
-          <span className="card-note">v0.1.0 alpha</span>
+          <span className="card-note">v0.1.1 alpha</span>
         </div>
         <div className="card about-card">
           <p>

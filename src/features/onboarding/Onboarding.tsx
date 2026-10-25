@@ -7,6 +7,7 @@ import {
   SEX_LABELS
 } from '../../types';
 import { Brand } from '../../components/Brand';
+import { StorageWarning } from '../../components/StorageWarning';
 import { calculateTargets, maintenanceCalories } from '../../lib/nutrition';
 import {
   centimetresToInches,
@@ -244,6 +245,7 @@ export function Onboarding() {
       </div>
 
       <main className="onboarding-body" key={step}>
+        <StorageWarning />
         {step === 0 ? (
           <>
             <p className="eyebrow">Set up</p>

@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
-import { del, get, set } from 'idb-keyval';
+import { persist } from 'zustand/middleware';
 import type {
   Entry,
   Food,
@@ -12,8 +11,7 @@ import type {
   Targets
 } from '../types';
 import { createId } from '../lib/id';
-
-const STORAGE_KEY = 'calai:v1';
+import { STATE_KEY, stateStorage } from '../lib/storage';
 
 const INITIAL_DATA: PersistedData = {
   schemaVersion: 1,
@@ -42,7 +40,6 @@ type QuickAddInput = {
 };
 
 type Actions = {
-  finishHydration: () => void;
   completeOnboarding: (profile: Profile, targets: Targets) => void;
   updateTargets: (targets: Targets) => void;
   updateSettings: (patch: Partial<Settings>) => void;
@@ -58,17 +55,7 @@ type Actions = {
   resetData: () => void;
 };
 
-export type AppStore = PersistedData & { hydrated: boolean } & Actions;
-
-const idbStorage = {
-  getItem: async (name: string) => (await get<string>(name)) ?? null,
-  setItem: async (name: string, value: string) => {
-    await set(name, value);
-  },
-  removeItem: async (name: string) => {
-    await del(name);
-  }
-};
+export type AppStore = PersistedData & Actions;
 
 function requestPersistentStorage() {
   if (typeof navigator === 'undefined' || !navigator.storage?.persist) return;
@@ -79,9 +66,6 @@ export const useAppStore = create<AppStore>()(
   persist(
     (set) => ({
       ...INITIAL_DATA,
-      hydrated: false,
-
-      finishHydration: () => set({ hydrated: true }),
 
       completeOnboarding: (profile, targets) =>
         set({ profile, targets, onboarded: true }),
@@ -163,13 +147,13 @@ export const useAppStore = create<AppStore>()(
             : [...state.favorites, id]
         })),
 
-      importData: (data) => set({ ...data, hydrated: true }),
+      importData: (data) => set({ ...data }),
 
-      resetData: () => set({ ...INITIAL_DATA, hydrated: true })
+      resetData: () => set({ ...INITIAL_DATA })
     }),
     {
-      name: STORAGE_KEY,
-      storage: createJSONStorage(() => idbStorage),
+      name: STATE_KEY,
+      storage: stateStorage,
       version: 1,
       partialize: (state): PersistedData => ({
         schemaVersion: state.schemaVersion,
@@ -190,17 +174,6 @@ export const useAppStore = create<AppStore>()(
   )
 );
 
-useAppStore.persist.onFinishHydration(() => {
-  useAppStore.setState({ hydrated: true });
-});
-
-queueMicrotask(() => {
-  if (useAppStore.persist.hasHydrated()) {
-    useAppStore.setState({ hydrated: true });
-  }
-});
-
 export function resetPersistedState() {
   useAppStore.getState().resetData();
-  void useAppStore.persist.clearStorage();
 }

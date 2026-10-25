@@ -1,25 +1,20 @@
 import type { ReactNode } from 'react';
 import { Brand } from './Brand';
 import { BottomNav } from './BottomNav';
+import { StorageWarning } from './StorageWarning';
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="frame">
       <header className="topbar">
         <Brand as="link" />
-        <span className="alpha-pill">alpha 0.1</span>
+        <span className="alpha-pill">alpha 0.1.1</span>
       </header>
-      <main className="main">{children}</main>
+      <main className="main">
+        <StorageWarning />
+        {children}
+      </main>
       <BottomNav />
     </div>
-  );
-}
-
-export function Splash() {
-  return (
-    <main className="splash">
-      <Brand />
-      <p className="splash-note">Opening your diary…</p>
-    </main>
   );
 }

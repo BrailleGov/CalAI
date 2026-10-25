@@ -281,35 +281,18 @@ svg {
   background: var(--accent-soft);
 }
 
-.splash {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  background: var(--bg);
-}
-
-.splash .brand {
-  font-size: 22px;
-}
-
-.splash-note {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--muted);
-  animation: breathe 1.8s ease-in-out infinite;
-}
-
-@keyframes breathe {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 1; }
-}
-
 /* --- Shared type and layout --------------------------------------------- */
+.storage-warning {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 178, 107, 0.5);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 178, 107, 0.12);
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
 .page {
   animation: page-in 0.35s var(--ease);
 }

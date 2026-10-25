@@ -1,13 +1,14 @@
 import { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAppStore } from './store/useAppStore';
-import { ToastProvider } from './components/Toast';
-import { AppShell, Splash } from './components/AppShell';
+import { ToastProvider, useToast } from './components/Toast';
+import { AppShell } from './components/AppShell';
 import { Onboarding } from './features/onboarding/Onboarding';
 import { TodayPage } from './features/today/TodayPage';
 import { FoodsPage } from './features/foods/FoodsPage';
 import { HistoryPage } from './features/history/HistoryPage';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { needsLegacyCheck, readLegacyState } from './lib/legacy';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -48,10 +49,30 @@ function ThemeSync() {
 }
 
 function Root() {
-  const hydrated = useAppStore((state) => state.hydrated);
   const onboarded = useAppStore((state) => state.onboarded);
+  const toast = useToast();
 
-  if (!hydrated) return <Splash />;
+  useEffect(() => {
+    if (!needsLegacyCheck()) return;
+
+    let cancelled = false;
+    void readLegacyState().then((data) => {
+      if (cancelled || !data) return;
+
+      const current = useAppStore.getState();
+      if (current.onboarded || current.entries.length > 0 || current.customFoods.length > 0) {
+        return;
+      }
+
+      current.importData(data);
+      toast('Restored your previous diary');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
+
   if (!onboarded) return <Onboarding />;
 
   return (

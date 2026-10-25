@@ -1,6 +1,6 @@
 # CalAI — product plan
 
-Status: **v0.1.0 is live (alpha).** v0.2+ are planned and await a separate go.
+Status: **v0.1.1 is live (alpha).** v0.2+ are planned and await a separate go.
 
 Last updated: 2026-10-24
 Live: <https://braillegov.github.io/CalAI/>
@@ -55,7 +55,8 @@ and how CalAI covers it.
 ### v0.1 — Foundation alpha (shipped)
 
 Goal: a genuinely usable local diary that can be installed and used on a phone with no
-network. Shipped as **v0.1.0** on 2026-10-24.
+network. Shipped as **v0.1.0** on 2026-10-24; **v0.1.1** hardens storage after a boot-hang
+report.
 
 In scope:
 
@@ -65,7 +66,7 @@ In scope:
 - Logging: portion multiplier, quick add, custom food creation.
 - History: 7-day chart and 30-day list with averages.
 - Settings: targets, units, theme (dark/light/system), export, import, reset.
-- PWA: manifest, icons, offline app shell, installable; data in IndexedDB.
+- PWA: manifest, icons, offline app shell, installable; data in localStorage.
 - Accessible dialogs, keyboard support, reduced-motion support, mobile safe areas.
 
 Explicitly out of v0.1: accounts, remote food DB, barcode, AI, reminders, weight, water,
@@ -82,11 +83,13 @@ v0.1 acceptance:
 - Lighthouse mobile: Performance ≥ 90, Accessibility ≥ 95, PWA installable.
 - Deployed to <https://braillegov.github.io/CalAI/> via GitHub Actions.
 
-Verified on the live deployment: 24 unit tests, browser smoke tests for onboarding, logging,
+Verified on the live deployment: 27 unit tests, browser smoke tests for onboarding, logging,
 editing, deleting, export/import, offline reload, reset, and validation; no horizontal
 overflow at 360 or 390 px; axe-core reports 0 WCAG A/AA violations across screens in both
 themes; Lighthouse mobile 99 performance / 100 accessibility / 100 best practices (SEO is
-intentionally 60 while the alpha carries `noindex`). Initial JS is 72.9 KB gzip.
+intentionally 60 while the alpha carries `noindex`). v0.1.1 adds storage recovery tests:
+blocked IndexedDB, blocked localStorage, corrupt state, and migration of a seeded v0.1.0
+IndexedDB diary. Unit tests: 27.
 
 ### v0.2 — Faster logging (planned)
 
@@ -209,7 +212,7 @@ Estimates are solo build days, not calendar promises.
 | # | Milestone | Scope | Days |
 | --- | --- | --- | --- |
 | M0 | Foundation | Repo, Pages, HTTPS, placeholder, docs | **done** |
-| M1 | v0.1 shell and data | Stack, design tokens, routing, store, IndexedDB | **done** |
+| M1 | v0.1 shell and data | Stack, design tokens, routing, store, local persistence | **done** |
 | M2 | Diary and onboarding | Targets, meals, entries, quick add | **done** |
 | M3 | Food library | Seed data, search, custom foods, recents | **done** |
 | M4 | History and settings | Charts, export/import, themes | **done** |
@@ -248,7 +251,7 @@ v0.1 shipped as M1–M5. Next up is v0.2 (M6–M7), pending a go-ahead.
 
 Settled for v0.1:
 
-- Vite + React + TypeScript, hash routing, IndexedDB persistence, no backend.
+- Vite + React + TypeScript, hash routing, synchronous local persistence, no backend.
 - Dark-first lime-on-black visual language, light theme included.
 - Seed food library plus custom foods; remote DB deferred.
 - Local-only data, JSON export/import, no accounts.
@@ -263,3 +266,5 @@ Pending before their releases:
 5. Monetisation, if any (post-alpha).
 6. Legal review and public contact address (v1.0).
 7. Design refinement beyond the current utilitarian direction (v0.2).
+v0.1 storage decision: synchronous localStorage, with a bounded one-time IndexedDB recovery
+read. Move the growing diary back to IndexedDB in v0.2 behind a migration.
