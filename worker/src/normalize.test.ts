@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   dedupeFoods,
-  filterRelevant,
   normalizeOffProduct,
+  normalizeOffSearchHit,
   normalizeUsdaFood,
   rankFoods
 } from './normalize';
@@ -71,21 +71,20 @@ describe('worker food normalisation', () => {
     });
   });
 
-  it('filters out results that do not mention the query', () => {
-    const milk = normalizeOffProduct({
-      code: '22222222',
-      product_name: 'Oat milk',
-      nutriments: { 'energy-kcal_100g': 46 }
-    });
-    const cheese = normalizeOffProduct({
-      code: '33333333',
-      product_name: 'Cheddar',
-      nutriments: { 'energy-kcal_100g': 400 }
+  it('normalises a search-a-licious hit', () => {
+    const food = normalizeOffSearchHit({
+      code: '44444444',
+      product_name: 'Nutella',
+      brands: ['Nutella', 'Ferrero'],
+      nutriments: { 'energy-kcal_100g': 539, proteins_100g: 6.3 }
     });
 
-    const foods = [milk, cheese].filter((food) => food !== null);
-    expect(filterRelevant(foods, 'oat milk').map((food) => food.name)).toEqual(['Oat milk']);
-    expect(filterRelevant(foods, 'banana')).toEqual([]);
+    expect(food).toMatchObject({
+      id: 'off-44444444',
+      name: 'Nutella',
+      brand: 'Nutella',
+      nutrients: { kcal: 539, protein: 6.3 }
+    });
   });
 
   it('dedupes by barcode and ranks exact names first', () => {

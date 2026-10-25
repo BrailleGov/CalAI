@@ -142,8 +142,9 @@ v0.2 acceptance check:
 Verified locally on 2026-10-24: 46 unit tests and 30 Playwright tests pass; axe-core
 reports 0 WCAG A/AA violations across onboarding, diary, add/edit sheets, foods, recipes,
 history, settings, reminders, and barcode; no horizontal overflow at 360/390 px; initial JS
-87.0 KB gzip plus a 108.7 KB gzip lazy ZXing chunk; PWA precache 751.0 KiB. Live Open Food
-Facts search returned results, and the offline reload test passes with the new injectManifest
+87.2 KB gzip plus a 108.7 KB gzip lazy ZXing chunk; PWA precache 751.8 KiB. Live Open Food
+Facts search returned results for category and brand queries, and the offline reload test
+passes with the new injectManifest
 service worker. Lighthouse was not re-run after the v0.2 bundle change, and the Worker/push
 tiers were not deployed.
 
@@ -288,8 +289,8 @@ pending. Next up is v0.3 (M8–M9), pending a go-ahead.
 | iOS PWA storage eviction | Lost diary | Request persistent storage; export; clear backups |
 | AI nutrition errors | Wrong totals, trust loss | Confirmation, confidence, editable portions, eval set |
 | AI cost/abuse | Runaway bill | Worker quotas, device tokens, global budget cap |
-| Food DB quality/licensing | Bad data, legal | Show source, cache, ODbL/USDA attribution, filter irrelevant results, seed verified foods |
-| Open Food Facts availability/relevance | Search feels empty or wrong | Graceful local fallback, query-token filtering, Worker cache, optional USDA |
+| Food DB quality/licensing | Bad data, legal | Show source, cache, ODbL/USDA attribution, seed verified foods |
+| Open Food Facts availability/relevance | Search feels empty or wrong or 503s | Graceful local fallback, brand/category queries, Worker cache, optional USDA |
 | Worker/VAPID not configured | No cached search, USDA, or push | Direct OFF fallback; `.ics` reminders; documented one-command deploy path |
 | GitHub Pages static limits | No headers, no server | Worker for dynamic; meta CSP; hash routing |
 | Health-data sensitivity | Privacy harm | Local-first, no raw data to AI by default, consent, export/delete |

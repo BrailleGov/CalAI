@@ -10,8 +10,9 @@ A mobile-first calorie tracker that installs from the web and works offline.
   calorie and macro targets with manual override.
 - Daily diary by meal, date navigation, portions, quick add, edit and delete.
 - Food library: ~100 common foods, custom foods, search, favorites, recents.
-- Online food search (Open Food Facts) with source labels, relevance filtering, and a local
-  cache of foods you log. Works without a Worker when `VITE_API_BASE` is unset.
+- Online food search (Open Food Facts) with source labels, brand/category queries, ranking,
+  and a local cache of foods you log. Works without a Worker when `VITE_API_BASE` is unset;
+  public rate limits can still make it flaky.
 - Barcode lookup: `BarcodeDetector` with a lazy-loaded ZXing fallback, plus a manual
   barcode-entry path for browsers without a camera.
 - Recipes: build a batch from foods, set servings, log a portion; past entries keep their
@@ -171,9 +172,9 @@ source back to a branch. A failed E2E run blocks deployment and uploads the Play
   settings, reminders, barcode, and open sheets in dark and light themes.
 - Layout: no horizontal overflow at 360 px or 390 px on every main screen; five-item bottom
   navigation fits at 360 px.
-- Bundle: initial JS 87.0 KB gzip + 2.4 KB workbox window; CSS 6.9 KB gzip. The ZXing
+- Bundle: initial JS 87.2 KB gzip + 2.4 KB workbox window; CSS 6.9 KB gzip. The ZXing
   fallback is a separate 108.7 KB gzip chunk loaded only when needed.
-- PWA precache: 17 entries, 751.0 KiB (includes the lazy ZXing chunk for offline barcode
+- PWA precache: 17 entries, 751.8 KiB (includes the lazy ZXing chunk for offline barcode
   lookup). Service worker: injectManifest with navigation fallback and push handlers.
 - Lighthouse was 100/100/100 in v0.1.1. Re-run it on the v0.2 deployment before treating the
   score as current.

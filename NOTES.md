@@ -47,8 +47,8 @@ v0.1.1 was a storage hotfix:
 v0.2.0 adds the "faster logging" release:
 
 - **Remote food search** (Open Food Facts direct; Worker proxy with KV cache + optional USDA).
-  Results show their source, filter out names that do not match the query, and foods you log
-  are cached locally (100-item cap) for offline reuse.
+  Results show their source; the client queries brand/category tags and ranks matches. Foods
+  you log are cached locally (100-item cap) for offline reuse.
 - **Barcode lookup**: `BarcodeDetector`, lazy `@zxing/browser` fallback, and manual 8–14 digit
   entry. Camera frames stay on-device.
 - **Recipes**: build from foods, set servings, edit/delete, log a portion to any meal.
@@ -135,7 +135,7 @@ push takes about 60–90 seconds.
 
 - 46 unit tests: nutrition/target math, dates, search, backup validation and v1→v2 migration,
   legacy state parsing, recipes, reminders and `.ics`, remote OFF parsing, Worker
-  normalization/relevance.
+  normalization.
 - 30 Playwright tests on Chromium at 390 × 844 (Pixel 7 descriptor):
   onboarding in metric and imperial, logging, quick add, custom foods, favorites, entry
   edit/delete, export/import, malformed imports, reset, theme persistence, scroll reset,
@@ -149,8 +149,8 @@ push takes about 60–90 seconds.
   five-item bottom navigation fits.
 - Live Open Food Facts search smoke test returned results in the preview app. E2E uses mocked
   OFF responses so it does not depend on the public API.
-- Bundle: initial JS 87.0 KB gzip + 2.4 KB workbox window; CSS 6.9 KB gzip; lazy ZXing chunk
-  108.7 KB gzip. PWA precache 17 entries (751.0 KiB).
+- Bundle: initial JS 87.2 KB gzip + 2.4 KB workbox window; CSS 6.9 KB gzip; lazy ZXing chunk
+  108.7 KB gzip. PWA precache 17 entries (751.8 KiB).
 - Not re-run in this session: Lighthouse on the v0.2 bundle, physical iOS/Android devices,
   installed-PWA push, USDA live calls, Worker deployment.
 
@@ -166,10 +166,11 @@ push takes about 60–90 seconds.
    `BarcodeDetector` and ZXing paths need a real device camera and permission-denied cases.
 4. **USDA provider is untested against the live API.** No USDA key was available. Normalization
    and relevance are unit-tested with fixture data.
-5. **Open Food Facts relevance is uneven.** Generic queries sometimes return unrelated
-   products; both client and Worker now drop results whose name/brand lacks every query token.
-   Seed foods remain the primary offline path. Consider a small curated remote cache for
-   common foods later.
+5. **Open Food Facts relevance and rate limits are uneven.** The old `search_terms` endpoint
+   returns unrelated products, so the client queries brand/category tags and ranks matches;
+   the Worker prefers the search-a-licious index. Bursty direct use can still hit 503s. Seed
+   foods remain the primary offline path; deploying the Worker + KV cache is the main
+   mitigation. Consider a small curated remote cache for common foods later.
 6. Only Chromium was tested. No physical iOS Safari, installed iOS PWA, Android Chrome,
    Firefox, or real update test.
 7. Service worker updates use `skipWaiting`; there is still no "update available" prompt, and
@@ -204,7 +205,7 @@ P0 — before v0.3:
 3. Add a non-blocking "update available" prompt and test an upgrade from v0.2.0.
 4. Decide on legacy IDB cleanup and add a safe migration completion check.
 5. Run Lighthouse and a device performance pass; compare against the v0.1 numbers (initial JS
-   is now 87.0 KB gzip, still under the 200 KB budget).
+   is now 87.2 KB gzip, still under the 200 KB budget).
 
 P1 — v0.2.x polish:
 

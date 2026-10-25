@@ -1,4 +1,5 @@
 import type { Food } from '../types';
+import { normalizeText } from './search';
 
 const OFF_BASE = 'https://world.openfoodfacts.org';
 const OFF_FIELDS =
@@ -107,16 +108,24 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs = 7000): Prom
   init.signal?.addEventListener('abort', abort);
 
   try {
-    const response = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json',
-        ...(init.headers ?? {})
-      }
-    });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          ...(init.headers ?? {})
+        }
+      });
 
-    if (!response.ok) {
+      if (response.ok) return (await response.json()) as unknown;
+
+      const retryable = response.status === 429 || response.status >= 500;
+      if (retryable && attempt === 0 && !controller.signal.aborted) {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+        continue;
+      }
+
       throw new RemoteError(
         response.status === 429
           ? 'Food search is busy. Try again in a moment.'
@@ -124,7 +133,7 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs = 7000): Prom
       );
     }
 
-    return (await response.json()) as unknown;
+    throw new RemoteError('Food search is unavailable right now.');
   } catch (error) {
     if (error instanceof RemoteError) throw error;
     throw new RemoteError(
@@ -138,35 +147,91 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs = 7000): Prom
   }
 }
 
-async function searchOffDirect(query: string, signal: AbortSignal): Promise<Food[]> {
-  const params = new URLSearchParams({
-    search_terms: query,
-    page_size: '20',
-    fields: OFF_FIELDS
-  });
-  const payload = await fetchJson(
-    `${OFF_BASE}/api/v2/search?${params.toString()}`,
-    { signal }
-  );
+function slugify(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
 
+function parseOffProducts(payload: unknown): Food[] {
   if (!payload || typeof payload !== 'object') return [];
   const products = (payload as { products?: unknown }).products;
   if (!Array.isArray(products)) return [];
 
-  const seen = new Set<string>();
   const foods: Food[] = [];
-
   for (const product of products) {
     if (!product || typeof product !== 'object') continue;
     const food = barcodeFoodFromOff(product as OffProduct);
-    if (!food) continue;
-    const key = food.barcode || food.id;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    foods.push(food);
+    if (food) foods.push(food);
+  }
+  return foods;
+}
+
+async function searchOffDirect(query: string, signal: AbortSignal): Promise<Food[]> {
+  const slug = slugify(query);
+  if (!slug) return [];
+
+  const params = (key: 'brands_tags' | 'categories_tags', value: string) => {
+    const search = new URLSearchParams({
+      [key]: value,
+      page_size: '20',
+      fields: OFF_FIELDS
+    });
+    return `${OFF_BASE}/api/v2/search?${search.toString()}`;
+  };
+
+  const urls = [params('brands_tags', slug), params('categories_tags', `en:${slug}`)];
+  if (!slug.endsWith('s')) {
+    urls.push(params('categories_tags', `en:${slug}s`));
   }
 
-  return foods;
+  const settled = await Promise.allSettled(
+    urls.map((url) => fetchJson(url, { signal }))
+  );
+
+  const foods: Food[] = [];
+  let succeeded = false;
+  let lastError: unknown = null;
+
+  for (const result of settled) {
+    if (result.status === 'fulfilled') {
+      succeeded = true;
+      foods.push(...parseOffProducts(result.value));
+    } else {
+      lastError = result.reason;
+    }
+  }
+
+  if (!succeeded) {
+    throw lastError instanceof Error
+      ? lastError
+      : new RemoteError('Food search is unavailable right now.');
+  }
+
+  const seen = new Set<string>();
+  const normalizedQuery = normalizeText(query);
+  const score = (food: Food) => {
+    const name = normalizeText(food.name);
+    const brand = normalizeText(food.brand ?? '');
+    if (name === normalizedQuery) return 3;
+    if (name.startsWith(normalizedQuery)) return 2;
+    if (name.includes(normalizedQuery)) return 1;
+    if (brand.includes(normalizedQuery)) return 1;
+    return 0;
+  };
+
+  return foods
+    .filter((food) => {
+      const key = food.barcode || food.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name))
+    .slice(0, 24);
 }
 
 export async function searchRemoteFoods(

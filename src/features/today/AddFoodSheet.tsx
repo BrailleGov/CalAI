@@ -168,13 +168,8 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
 
   const onlineVisible = useMemo(() => {
     const localKeys = new Set(results.map(foodKey));
-    const tokens = normalizeText(trimmedQuery).split(/\s+/).filter(Boolean);
-    return onlineFoods.filter((food) => {
-      if (localKeys.has(foodKey(food))) return false;
-      const haystack = normalizeText(`${food.name} ${food.brand ?? ''}`);
-      return tokens.every((token) => haystack.includes(token));
-    });
-  }, [onlineFoods, results, trimmedQuery]);
+    return onlineFoods.filter((food) => !localKeys.has(foodKey(food)));
+  }, [onlineFoods, results]);
 
   const quantityValue = Number(quantity);
   const validQuantity = Number.isFinite(quantityValue) && quantityValue > 0 && quantityValue <= 100;

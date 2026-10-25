@@ -98,7 +98,7 @@ Worker (shipped in v0.2):
 ```
 worker/
   src/index.ts             # router: search, barcode, push, scheduled cron
-  src/normalize.ts         # OFF/USDA → FoodDTO, dedupe, relevance, ranking
+  src/normalize.ts         # OFF/USDA → FoodDTO, dedupe, ranking
   src/providers/off.ts
   src/providers/usda.ts
   src/cache.ts             # KV cache + per-IP daily cap
@@ -420,7 +420,7 @@ The Worker sets its own CSP/CORS headers.
 
 - **Unit (Vitest):** target math, macro rounding, date keys across DST, search ranking,
   import validation and v1→v2 migration, nutrient scaling, recipe totals, reminder windows
-  and `.ics`, OFF parsing, and Worker normalization/relevance.
+  and `.ics`, OFF parsing, and Worker normalization.
 - **E2E (Playwright, committed and in CI):** onboarding → log → reload persistence → edit →
   delete → export/import at 390 × 844; blocked localStorage, blocked IndexedDB, corrupt
   state, legacy IDB recovery; offline reload; online search success/failure; manual barcode
@@ -498,7 +498,7 @@ the Worker and push tiers still need deployment credentials.
 
 - Unit tests: 46 passing (nutrition/target math, dates, search, backup validation and v1→v2
   migration, legacy IndexedDB recovery, recipes, reminders incl. `.ics`, remote OFF parsing,
-  Worker normalization/relevance).
+  Worker normalization).
 - Playwright: 30 tests passing on Chromium at 390 × 844 (Pixel 7 descriptor), including
   onboarding, logging, edit/delete, quick add, custom foods, favorites, export/import,
   malformed imports, blocked localStorage, blocked IndexedDB, corrupt state, legacy IDB
@@ -510,14 +510,16 @@ the Worker and push tiers still need deployment credentials.
   dark and light themes. Animations are finished before scanning.
 - Layout: no horizontal overflow at 360 px or 390 px on Today, Foods, Recipes, History, and
   Settings; five-item bottom navigation fits.
-- Online search: mocked OFF responses in E2E; a live smoke test against Open Food Facts
-  returned 16 products for “banana”. Relevance filtering hides non-matching names.
+- Online search: mocked OFF responses in E2E; live smoke tests returned category results for
+  “banana” and brand results for “nutella”/“oatly” when OFF was not rate-limiting. Direct OFF
+  calls can return 503 under bursty use; the app falls back to local foods with a clear note,
+  and the Worker cache is the mitigation.
   Failure/offline paths fall back to local foods with a clear note.
 - Barcode: manual lookup path tested with a mocked OFF product; `BarcodeDetector` and ZXing
   paths are code-complete but not exercised on a physical camera in this session.
-- PWA: injectManifest service worker precaches 17 entries (751.0 KiB), serves an offline
+- PWA: injectManifest service worker precaches 17 entries (751.8 KiB), serves an offline
   reload, and includes push/notificationclick handlers. Manifest scope remains `/CalAI/`.
-- Bundle: initial JS 87.0 KB gzip + 2.4 KB workbox window; CSS 6.9 KB gzip; lazy ZXing chunk
+- Bundle: initial JS 87.2 KB gzip + 2.4 KB workbox window; CSS 6.9 KB gzip; lazy ZXing chunk
   108.7 KB gzip loaded only when `BarcodeDetector` is missing. Under the 200 KB initial-JS
   budget.
 - Storage: v1 documents/backups and v0.1.0 IndexedDB diaries migrate to v2; blocked storage

@@ -1,6 +1,6 @@
 import type { FoodDTO } from './types';
 
-type OffProduct = {
+export type OffProduct = {
   code?: string;
   product_name?: string;
   brands?: string;
@@ -94,6 +94,21 @@ function nutrientValue(
   return null;
 }
 
+export function normalizeOffSearchHit(hit: {
+  code?: string;
+  product_name?: string;
+  product_name_en?: string;
+  brands?: string | string[];
+  nutriments?: Record<string, unknown>;
+}): FoodDTO | null {
+  return normalizeOffProduct({
+    code: hit.code,
+    product_name: hit.product_name ?? hit.product_name_en,
+    brands: Array.isArray(hit.brands) ? hit.brands.join(', ') : hit.brands,
+    nutriments: hit.nutriments
+  });
+}
+
 export function normalizeUsdaFood(food: UsdaFood): FoodDTO | null {
   const name = food.description?.trim();
   if (!name) return null;
@@ -165,16 +180,6 @@ export function scoreFood(food: FoodDTO, query: string): number {
   if (food.servingGrams === 100) score += 1;
 
   return score;
-}
-
-export function filterRelevant(foods: FoodDTO[], query: string): FoodDTO[] {
-  const tokens = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return foods;
-
-  return foods.filter((food) => {
-    const haystack = `${food.name} ${food.brand ?? ''}`.toLowerCase();
-    return tokens.every((token) => haystack.includes(token));
-  });
 }
 
 export function rankFoods(foods: FoodDTO[], query: string, limit: number): FoodDTO[] {

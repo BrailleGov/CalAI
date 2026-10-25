@@ -6,7 +6,7 @@ import {
   searchCacheKey,
   writeCache
 } from './cache';
-import { dedupeFoods, filterRelevant, rankFoods } from './normalize';
+import { dedupeFoods, rankFoods } from './normalize';
 import { lookupOffBarcode, searchOff } from './providers/off';
 import { searchUsda } from './providers/usda';
 import type {
@@ -139,7 +139,7 @@ async function handleSearch(
   }
 
   const payload = {
-    foods: rankFoods(filterRelevant(dedupeFoods(foods), query), query, limit),
+    foods: rankFoods(dedupeFoods(foods), query, limit),
     sources
   };
 
