@@ -1,7 +1,7 @@
 # CalAI — handoff notes
 
 Last updated: 2026-10-25
-Release: **v0.3.0 alpha (live)**
+Release: **v0.3.0 alpha (live); v0.3.1 in progress**
 Live: <https://braillegov.github.io/CalAI/>
 API: <https://calai-api.braille.workers.dev> (account `6e8aa19c29eece010d2447b7f666632b`)
 Repo: <https://github.com/BrailleGov/CalAI>
@@ -26,9 +26,9 @@ for the technical design before starting work.
   public VAPID key, runs the configured-AI suite, and deploys that bundle. AI, the shared food
   library, cloud backup, SMS, and server-cached search are active in production; the diary
   stays local-first and offline-capable. Push is dormant.
-- DeepSeek and Textbelt keys were provided during this session and pasted into chat. They are
-  in the gitignored `worker/.dev.vars` locally and set as Wrangler secrets for production.
-  Rotate both, then update `.dev.vars` and run `wrangler secret put` again.
+- DeepSeek, Textbelt, and Brave Search keys were provided during this session and pasted into
+  chat. They are in the gitignored `worker/.dev.vars` locally and set as Wrangler secrets for
+  production. Rotate all three, then update `.dev.vars` and run `wrangler secret put` again.
 - `noindex` and `robots.txt` still keep the alpha out of search results.
 - Pages is configured with `build_type: workflow`; do not commit `dist/` or change the source
   back to a branch.
@@ -77,6 +77,21 @@ v0.3.0 (live):
 - **Tests.** 86 unit tests and 34 local-first Playwright tests pass (plus the configured-AI
   test against a mocked Worker); axe 0 A/AA violations on new screens.
 
+v0.3.1 (in progress):
+
+- **Brave Search.** `BRAVE_SEARCH_API_KEY` is a Worker secret. Branded/package/restaurant
+  items return an optional `webQuery`; the Worker searches Brave (24-hour KV cache), refines up
+  to two items in one extra DeepSeek pass, and returns sanitized `webSources`. Food discovery is
+  also web-grounded and marks rows `web: true` while keeping `source: "ai"` for older clients.
+- **Cloud/SMS token coupling fixed.** Removing cloud backup no longer clears the device token
+  while SMS is enabled; reset deletes the cloud snapshot before clearing local state.
+- **Storage quarantine.** Invalid persisted state is copied to `calai:quarantine` before the
+  normal key is removed; write failures now show a warning.
+- **Quota/push hardening.** Quotas prefer atomic D1 counters; push subscribe/unsubscribe
+  require device auth and ownership; CI typechecks the Worker.
+- **Version:** package and UI say 0.3.1. Pages is not deployed yet; the Worker can be deployed
+  independently because web results are backward-compatible.
+
 ## Storage details
 
 | Key | Where | Purpose |
@@ -102,7 +117,7 @@ trust boundary as the diary); the server copy is AES-GCM encrypted.
 cd D:\Projects\CalAI
 npm ci
 npm run dev        # http://localhost:5173/CalAI/
-npm test           # 86 unit tests
+npm test           # 97 unit tests
 npm run typecheck
 npm run build      # dist/, deployed by CI
 npm run test:e2e   # build + 34 Playwright tests
@@ -130,10 +145,11 @@ npx wrangler dev
 
 ## Verification status
 
-- 86 unit tests: nutrition/target math, dates, search, backup validation and v1/v2→v3
+- 97 unit tests: nutrition/target math, dates, search, backup validation and v1/v2→v3
   migration, legacy state parsing, recipes, curated recipe integrity, remote OFF parsing,
   preferences, local text parsing, image sizing, assistant context, SMS helpers, shared AI food
-  normalization, and Worker normalization/AI/SMS.
+  normalization, Brave search sanitization/retry/cache, web refinement, and Worker
+  normalization/AI/SMS.
 - 35 Playwright tests on Chromium at 390 × 844. The default local-first build ran 34 passing
   (configured-AI test skipped); the Worker-enabled build ran the remaining
   `e2e/ai-configured.spec.ts` test against a mocked Worker. Coverage includes onboarding (all
@@ -149,12 +165,14 @@ npx wrangler dev
   barcode, AI result sheet, and assistant.
 - Layout: no horizontal overflow at 360/390 px on Today, Foods, Recipes, Discover, History,
   Settings, and Assistant.
-- Bundle: initial JS 117.5 KB gzip + 2.4 KB workbox window; CSS 9.4 KB gzip; lazy ZXing chunk
-  108.7 KB gzip. PWA precache 17 entries (874.3 KiB).
+- Bundle: initial JS 125.6 KB gzip + 2.4 KB workbox window; CSS 9.6 KB gzip; lazy ZXing chunk
+  108.7 KB gzip. PWA precache 17 entries (898.2 KiB).
 - Deployed Worker verification (2026-10-25, HTTP through
   `https://calai-api.braille.workers.dev`):
-  - `/health` returned `search/ai/sharedFoods/sync/sms/push` all true; CORS returned the Pages
-    origin.
+  - `/health` returned `search/ai/webSearch/sharedFoods/sync/sms/push` all true; CORS returned
+    the Pages origin.
+  - A branded text parse returned `webSources` and web-refined notes; discovery for “coca cola
+    zero” returned four `web: true` rows and source links.
   - `/v1/foods/search?q=oat milk` returned four Open Food Facts foods via the KV path.
   - `POST /v1/foods/discover` for “paneer” returned six AI foods and stored them in
     `shared_foods`; `GET /v1/foods/library?q=paneer` then returned the same six, and a second

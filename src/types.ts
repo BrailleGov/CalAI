@@ -57,6 +57,8 @@ export type Food = {
   servingGrams?: number;
   nutrients: Nutrients;
   source: FoodSource;
+  /** True when an AI estimate was reconciled against current web results. */
+  web?: boolean;
   createdAt: number;
   category?: FoodCategory;
 };
@@ -339,6 +341,10 @@ export const FOOD_SOURCE_LABELS: Record<FoodSource, string> = {
   recipe: 'recipe',
   ai: 'AI estimate'
 };
+
+export function foodSourceLabel(food: Pick<Food, 'source' | 'web'>): string {
+  return food.web ? 'Web + AI' : FOOD_SOURCE_LABELS[food.source];
+}
 
 export const DEFAULT_REMINDERS: Reminder[] = [
   { id: 'breakfast', meal: 'breakfast', time: '08:00', enabled: false },

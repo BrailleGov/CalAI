@@ -93,6 +93,7 @@ function sanitizeFoods(value: unknown): Food[] {
       food.name.length <= 200 &&
       typeof food.servingLabel === 'string' &&
       (food.source === 'off' || food.source === 'usda' || food.source === 'ai') &&
+      (food.web === undefined || typeof food.web === 'boolean') &&
       Boolean(food.nutrients) &&
       typeof food.nutrients?.kcal === 'number' &&
       Number.isFinite(food.nutrients.kcal)
@@ -406,7 +407,7 @@ export async function discoverSharedFoods(
       },
       body: JSON.stringify({ query: trimmed })
     },
-    45_000
+    60_000
   );
 
   if (!payload || typeof payload !== 'object') {

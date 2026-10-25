@@ -67,7 +67,14 @@ test('configured AI UI works against a mocked Worker', async ({ page }) => {
           }
         ],
         note: 'One banana.',
-        uncertain: false
+        uncertain: false,
+        webSources: [
+          {
+            title: 'Banana nutrition',
+            url: 'https://example.com/banana',
+            domain: 'example.com'
+          }
+        ]
       });
       return;
     }
@@ -207,6 +214,7 @@ test('configured AI UI works against a mocked Worker', async ({ page }) => {
     .setInputFiles(path.resolve('e2e/fixtures/meal.png'));
   await photoDialog.getByRole('button', { name: 'Analyse photo' }).click();
   await expect(photoDialog.getByLabel('Food name')).toHaveValue('Banana');
+  await expect(photoDialog.getByRole('link', { name: 'example.com' })).toBeVisible();
   await photoDialog.getByRole('button', { name: 'Breakfast', exact: true }).click();
   await photoDialog.getByRole('button', { name: 'Log 1 item to Breakfast' }).click();
   await expect(page.getByRole('button', { name: 'Edit Banana' })).toBeVisible();

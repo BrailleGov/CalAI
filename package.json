@@ -1,7 +1,7 @@
 {
   "name": "calai",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Mobile-first calorie tracker",
   "scripts": {
@@ -17,7 +17,7 @@
     "idb-keyval": "6.3.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "react-router-dom": "6.30.6",
+    "react-router-dom": "^7.18.4",
     "zustand": "5.0.16"
   },
   "devDependencies": {

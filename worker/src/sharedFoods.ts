@@ -35,6 +35,7 @@ type SharedFoodRow = {
   carbs: number;
   fat: number;
   category: string | null;
+  source: string;
   created_at: number;
 };
 
@@ -114,6 +115,7 @@ function toDto(row: SharedFoodRow): FoodDTO {
     },
     ...(row.category ? { category: row.category } : {}),
     source: 'ai',
+    ...(row.source === 'web' ? { web: true } : {}),
     createdAt: row.created_at
   };
 }
@@ -121,7 +123,8 @@ function toDto(row: SharedFoodRow): FoodDTO {
 export async function saveSharedFoods(
   env: Env,
   query: string,
-  foods: SharedFoodInput[]
+  foods: SharedFoodInput[],
+  source: 'ai' | 'web' = 'ai'
 ): Promise<FoodDTO[]> {
   const now = Date.now();
   const normalizedQuery = normalizeFoodName(query).slice(0, 120);
@@ -143,6 +146,7 @@ export async function saveSharedFoods(
       carbs: food.nutrients.carbs,
       fat: food.nutrients.fat,
       category: food.category ?? null,
+      source,
       created_at: now
     });
   }
@@ -153,8 +157,11 @@ export async function saveSharedFoods(
       await env.DB.prepare(
         `INSERT INTO shared_foods
           (id, name, brand, serving_label, serving_grams, kcal, protein, carbs, fat, category, source, query, hits, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai', ?, 0, ?)
-         ON CONFLICT(id) DO UPDATE SET query = excluded.query, hits = shared_foods.hits + 1`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           source = excluded.source,
+           query = excluded.query,
+           hits = shared_foods.hits + 1`
       )
         .bind(
           row.id,
@@ -167,6 +174,7 @@ export async function saveSharedFoods(
           row.carbs,
           row.fat,
           row.category,
+          row.source,
           normalizedQuery,
           row.created_at
         )
@@ -200,7 +208,7 @@ export async function searchSharedFoods(
   ]);
 
   const result = await env.DB.prepare(
-    `SELECT id, name, brand, serving_label, serving_grams, kcal, protein, carbs, fat, category, created_at
+    `SELECT id, name, brand, serving_label, serving_grams, kcal, protein, carbs, fat, category, source, created_at
      FROM shared_foods
      WHERE ${clause}
      ORDER BY hits DESC, created_at DESC

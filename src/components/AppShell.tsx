@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <IconSparkles size={18} />
             </Link>
           ) : null}
-          <span className="alpha-pill">alpha 0.3.0</span>
+          <span className="alpha-pill">alpha 0.3.1</span>
         </div>
       </header>
       <main className="main">

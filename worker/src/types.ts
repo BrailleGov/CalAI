@@ -16,6 +16,8 @@ export type FoodDTO = {
   servingGrams?: number;
   nutrients: Nutrients;
   source: 'off' | 'usda' | 'ai';
+  /** True when values were grounded against current web results. */
+  web?: boolean;
   category?: string;
   createdAt: number;
 };
@@ -64,6 +66,10 @@ export type Env = {
   DEEPSEEK_API_KEY?: string;
   DEEPSEEK_MODEL?: string;
   DEEPSEEK_BASE_URL?: string;
+  BRAVE_SEARCH_API_KEY?: string;
+  BRAVE_SEARCH_BASE_URL?: string;
+  WEB_DAILY_SEARCHES?: string;
+  WEB_MONTHLY_SEARCHES?: string;
   AI_DAILY_RECOGNIZE?: string;
   AI_DAILY_PARSE?: string;
   AI_DAILY_CHAT?: string;
@@ -107,6 +113,8 @@ export type AiFoodItem = {
   fat: number;
   confidence: number;
   notes?: string;
+  /** A model-chosen brand/product query used for an optional web lookup. */
+  webQuery?: string;
 };
 
 export type SmsRow = {

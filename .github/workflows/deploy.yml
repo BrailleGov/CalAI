@@ -36,6 +36,14 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Install Worker
+        working-directory: worker
+        run: npm ci
+
+      - name: Typecheck Worker
+        working-directory: worker
+        run: npm run typecheck
+
       - name: Build
         run: npm run build
 

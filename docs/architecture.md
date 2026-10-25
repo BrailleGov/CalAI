@@ -16,6 +16,7 @@ flowchart LR
   Worker -.-> OFF
   Worker -.-> USDA["USDA FoodData Central"]
   Worker -.-> DeepSeek["DeepSeek<br/>deepseek-flash"]
+  Worker -.-> Brave["Brave Search<br/>branded nutrition"]
   Worker -.-> Textbelt["Textbelt<br/>outbound SMS"]
   Worker -.-> D1[("D1<br/>devices, encrypted snapshots,<br/>SMS prefs/log, quotas")]
   Worker -.-> Push["Web Push endpoints"]
@@ -50,6 +51,8 @@ Chosen and shipped through v0.2:
   D1 backup, SMS cron, rate caps, and push.
 - **DeepSeek** `deepseek-flash` (DeepSeek-V4.1-Flash-1017) for vision, text parsing, chat, and
   recipes. JSON output mode; thinking disabled for latency.
+- **Brave Search** for current branded/packaged nutrition and ingredient evidence. The key is
+  a Worker secret; queries contain only food/brand text and results are cached for 24 hours.
 - **Textbelt** for outbound-only SMS reminders.
 - Inline SVG icon components; no icon library.
 - System font stack; no third-party font requests (privacy, offline, speed).
@@ -111,7 +114,8 @@ Worker (shipped in v0.3):
 ```
 worker/
   src/index.ts             # router: search, barcode, push, AI, auth, sync, SMS, cron
-  src/ai.ts                # DeepSeek calls, prompts, output validation
+  src/ai.ts                # DeepSeek calls, prompts, output validation, web-aware refinement
+  src/web.ts               # Brave Search client, cache, quotas, source sanitization
   src/auth.ts              # device registration + bearer auth
   src/crypto.ts            # SHA-256, AES-GCM, random tokens
   src/db.ts                # D1 schema bootstrap
@@ -340,17 +344,20 @@ v0.2 remote search:
 - A Worker request is capped per IP per UTC day (default 300) when KV is bound. Search and
   barcode responses include `sources` and `cached` metadata.
 
-## 6. AI architecture (v0.3)
+## 6. AI architecture (v0.3.1)
 
 ### Provider and credentials
 
 - Model: `deepseek-flash`, served by DeepSeek-V4.1-Flash-1017. The API is OpenAI-compatible
   at `https://api.deepseek.com`. The key is a Worker secret (`DEEPSEEK_API_KEY`).
+- Brave Search (`BRAVE_SEARCH_API_KEY`, `https://api.search.brave.com/res/v1/web/search`) is
+  used only for branded/packaged/restaurant items and food discovery. Results are sanitized,
+  capped, KV-cached for 24 hours, and never trusted as instructions.
 - JSON output mode (`response_format: { type: 'json_object' }`), thinking disabled, bounded
-  `max_tokens`, explicit timeouts (35–60 s), and one request per user action (no retries).
+  `max_tokens`, explicit timeouts (25–60 s), and no automatic retries.
 - The verified provider docs confirm vision, JSON output, system messages, and image limits.
   Live smoke tests against the Worker's handler code succeeded for text parsing, a banana
-  photo, and recipe generation.
+  photo, recipe generation, and Brave search.
 
 ### Endpoints
 
@@ -363,15 +370,17 @@ v0.2 remote search:
 | `POST /v1/ai/chat` | Grounded Q&A + optional proposal | 60/day per device+IP |
 | `POST /v1/ai/recipes` | Generate or rank recipes | 20/day per device+IP |
 | `GET /v1/foods/library` | Search the shared AI-generated food library | 300/day per IP |
-| `POST /v1/foods/discover` | Generate 4–6 foods, store in D1, return them | 20/day per device+IP |
+| `POST /v1/foods/discover` | Brave + DeepSeek generate 4–6 foods, store in D1 | 20/day per device+IP |
 | `POST /v1/sms/prefs` | Save consent, phone, reminders | authenticated device |
 | `POST /v1/sms/test` | One test text | 1/day per device |
 | `DELETE /v1/sms/prefs` | Delete SMS preferences | authenticated device |
 | `GET /v1/foods/search` | OFF/USDA proxy | 300/day per IP (KV) |
 
-Quotas use KV when bound, then D1, then isolate memory for local dev. A monthly global request
-cap (`AI_MONTHLY_REQUEST_CAP`, default 5,000) short-circuits AI calls. No API keys reach the
-client.
+Quotas prefer D1 when bound because its increment is atomic, then KV, then isolate memory for
+local dev. A monthly global request cap (`AI_MONTHLY_REQUEST_CAP`, default 5,000)
+short-circuits AI calls. Brave has separate per-device/day (`WEB_DAILY_SEARCHES`, default 30)
+and global/month (`WEB_MONTHLY_SEARCHES`, default 1,000) caps plus a 24-hour KV cache. No API
+keys reach the client.
 
 ### Vision flow
 
@@ -380,27 +389,34 @@ client.
 2. `POST /v1/ai/recognize` sends a base64 data URL; the Worker checks the declared MIME,
    decoded size (≤ 5 MB), and magic bytes.
 3. DeepSeek is called with a system prompt and an image content block. It returns
-   `{ items: [{ name, quantityLabel, grams, kcal, protein, carbs, fat, confidence, notes }],
-   note }`.
+   `{ items: [{ name, quantityLabel, grams, kcal, protein, carbs, fat, confidence, notes,
+   webQuery }], note }`. `webQuery` is optional and only set for a branded/packaged/restaurant
+   item where current nutrition may differ from a generic estimate.
 4. The Worker clamps every number, caps items, and returns confidence; it does not store the
    image.
-5. The client matches each name to the local library, can apply a library value when a gram
+5. If any item has a `webQuery`, the Worker runs up to two Brave searches, then one refinement
+   pass over only those items. The refinement must cite a clearly matching product/serving;
+   otherwise the original estimate is kept. Responses include sanitized `webSources` for the
+   UI's “Web-checked” links.
+6. The client matches each name to the local library, can apply a library value when a gram
    serving exists, and lets the user edit name, grams/servings, and macros.
-6. Nothing is logged until the user presses the final log button. Items can be saved to the
+7. Nothing is logged until the user presses the final log button. Items can be saved to the
    custom-food library.
-7. Failure/offline/over-quota → a clear message, retry, or manual search with the meal context
+8. Failure/offline/over-quota → a clear message, retry, or manual search with the meal context
    preserved.
 
 ### Text, chat, and recipes
 
 - Text parsing reuses the item schema minus the image. An offline matcher covers simple
-  phrases against local foods; it never invents nutrition and reports unmatched text.
+  phrases against local foods; it never invents nutrition and reports unmatched text. AI text
+  parsing uses the same `webQuery` refinement as vision.
 - Food discovery runs when a search has at least two characters and AI consent is present. The
   client first queries `/v1/foods/library`, then `/v1/foods/discover`; the Worker returns stored
-  matches immediately when it already has four or more and otherwise asks DeepSeek for 4–6
-  generic foods, clamps them, stores them in `shared_foods`, and returns them. The client
-  appends each response as it arrives and shows a live “finding items” indicator. Results are
-  labelled “AI estimate” and are cached locally only when chosen or logged.
+  matches immediately when it already has four or more and otherwise searches Brave, asks
+  DeepSeek for 4–6 foods grounded in those snippets, clamps them, stores them in
+  `shared_foods`, and returns them. Web-grounded rows keep `source: "ai"` for backward
+  compatibility and add `web: true`; the client shows “Web + AI”. The client appends each
+  response as it arrives and shows a live “finding items” indicator.
 - Chat context is assembled on the client: goal, target weight, training focus, preferences,
   7/14/30-day totals and averages, logged days, recent food names, weight, water, and active
   reminder meals. No email, account ID, or raw entries are sent.
@@ -419,8 +435,9 @@ client.
 
 ### Safety and privacy
 
-- AI is opt-in. Photo, coach, and recipe toggles default off; text logging defaults on but uses
-  offline matching unless AI consent is present.
+- AI is opt-in. Photo and text shortcuts are visible by default in v0.3.1, but no AI request
+  is sent until explicit consent; coach and recipe toggles default off. Offline text matching
+  always works without consent or a network.
 - System prompts forbid medical diagnosis, extreme dieting, and shaming; they also tell the
   model to treat images and context as data, not instructions.
 - The Worker never logs prompts, photos, text, food names, or calorie values. It logs status
@@ -504,7 +521,7 @@ Worker (v0.3):
   (`4720c88208744717a583112e89def60f`) and D1 `calai`
   (`8d689615-14b6-4951-84d4-651d92eb0970`); the ids live in `worker/wrangler.toml`.
 - Secrets via `wrangler secret put`: `DEEPSEEK_API_KEY`, `TEXTBELT_API_KEY`,
-  `DATA_ENC_KEY` (32 random bytes, base64), optional `USDA_API_KEY`, and
+  `BRAVE_SEARCH_API_KEY`, `DATA_ENC_KEY` (32 random bytes, base64), optional `USDA_API_KEY`, and
   `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` for push. The VAPID public key is
   also passed to the client as `VITE_VAPID_PUBLIC_KEY` at build time.
 - Run `npx wrangler d1 migrations apply calai --remote` (optional; `ensureSchema` also
@@ -735,3 +752,17 @@ is deployed with the Worker, AI, SMS, cloud, and push tiers enabled.
 - Live Worker smoke test: `POST /v1/foods/discover` for “paneer” returned six foods, stored
   them, and `GET /v1/foods/library?q=paneer` returned the same six; a second discover call
   returned `cached: true` without a model call. `/health` reports `sharedFoods: true`.
+- Brave Search grounding (v0.3.1): branded/packaged/restaurant items can carry a model-chosen
+  `webQuery`. The Worker searches Brave, runs one refinement pass over up to two items, returns
+  sanitized `webSources`, and falls back to the original estimate on any failure. Food
+  discovery also uses Brave snippets and marks rows `web: true` while keeping `source: "ai"`
+  for older clients.
+- Hardening (v0.3.1): cloud-backup removal no longer clears the shared device token while SMS
+  is enabled; reset deletes the cloud snapshot before local state; invalid persisted state is
+  quarantined instead of silently lost; quota counters prefer atomic D1 updates; dormant push
+  endpoints require device auth and ownership; CI now typechecks the Worker.
+- Verification (v0.3.1): 97 unit tests; 34 local-first Playwright tests plus the configured-AI
+  test against a mocked Worker (35 total); bundle initial JS 125.6 KB gzip, CSS 9.6 KB gzip,
+  precache 898.2 KiB. The Worker deployed with `webSearch: true`; live branded parse and
+  discovery returned `webSources`, and discovery rows returned `web: true`.
+- Version: v0.3.1 (Worker deployed 2026-10-25; Pages build pending).

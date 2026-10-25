@@ -3,7 +3,7 @@ import type { Food, FoodCategory } from '../../types';
 import {
   FOOD_CATEGORIES,
   FOOD_CATEGORY_LABELS,
-  FOOD_SOURCE_LABELS
+  foodSourceLabel
 } from '../../types';
 import { SEED_FOODS } from '../../data/seedFoods';
 import { useAppStore } from '../../store/useAppStore';
@@ -222,8 +222,8 @@ export function FoodsPage() {
               <div className="food-row-main">
                 <span className="food-name">
                   {food.name}
-                  {FOOD_SOURCE_LABELS[food.source] ? (
-                    <span className="badge">{FOOD_SOURCE_LABELS[food.source]}</span>
+                  {foodSourceLabel(food) ? (
+                    <span className="badge">{foodSourceLabel(food)}</span>
                   ) : null}
                 </span>
                 <span className="food-meta">

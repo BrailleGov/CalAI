@@ -15,6 +15,12 @@ import { CloudBackupSection } from './CloudBackupSection';
 import { SmsSettings } from './SmsSettings';
 import { SMS_CONFIGURED, disableSms } from '../../lib/sms';
 import {
+  SYNC_CONFIGURED,
+  clearSyncToken,
+  deleteCloudSnapshot,
+  getSyncToken
+} from '../../lib/sync';
+import {
   IconDownload,
   IconSparkles,
   IconTrash,
@@ -40,6 +46,7 @@ export function SettingsPage() {
   const [fat, setFat] = useState(String(targets.fat));
   const [errors, setErrors] = useState<TargetErrors>({});
   const [confirmReset, setConfirmReset] = useState(false);
+  const [resetError, setResetError] = useState('');
   const [waterGoal, setWaterGoal] = useState(String(settings.waterGoalMl));
   const [waterError, setWaterError] = useState('');
 
@@ -142,15 +149,32 @@ export function SettingsPage() {
 
   async function handleReset() {
     const state = useAppStore.getState();
+    setResetError('');
+
     if (SMS_CONFIGURED && state.sms.enabled) {
       try {
         await disableSms();
       } catch {
-        toast('Could not turn off SMS. Try again before resetting.');
+        setResetError(
+          'SMS reminders could not be turned off. Retry while online before deleting local data.'
+        );
         return;
       }
     }
+
+    if (SYNC_CONFIGURED && (state.cloudSync.enabled || Boolean(getSyncToken()))) {
+      try {
+        await deleteCloudSnapshot();
+      } catch {
+        setResetError(
+          'The encrypted cloud copy could not be deleted. Retry while online before deleting local data.'
+        );
+        return;
+      }
+    }
+
     resetPersistedState();
+    clearSyncToken();
     setConfirmReset(false);
     toast('All local data cleared');
   }
@@ -395,12 +419,23 @@ export function SettingsPage() {
 
           {confirmReset ? (
             <div className="delete-confirm" role="alert">
-              <p>Delete all foods, entries, and settings on this device?</p>
+              <p>
+                Delete all foods, entries, and settings on this device? If cloud backup or SMS
+                is enabled, CalAI also deletes the server copies first.
+              </p>
+              {resetError ? (
+                <p className="field-error" role="alert">
+                  {resetError}
+                </p>
+              ) : null}
               <div className="delete-actions">
                 <button
                   type="button"
                   className="btn btn-ghost"
-                  onClick={() => setConfirmReset(false)}
+                  onClick={() => {
+                    setConfirmReset(false);
+                    setResetError('');
+                  }}
                 >
                   Cancel
                 </button>
@@ -413,7 +448,10 @@ export function SettingsPage() {
             <button
               type="button"
               className="settings-action settings-action-danger"
-              onClick={() => setConfirmReset(true)}
+              onClick={() => {
+                setResetError('');
+                setConfirmReset(true);
+              }}
             >
               <IconTrash size={18} />
               <span>
@@ -428,7 +466,7 @@ export function SettingsPage() {
       <section className="settings-section" aria-labelledby="about-heading">
         <div className="card-head card-head-flush">
           <h2 id="about-heading">About</h2>
-          <span className="card-note">v0.3.0 alpha</span>
+          <span className="card-note">v0.3.1 alpha</span>
         </div>
         <div className="card about-card">
           <p>

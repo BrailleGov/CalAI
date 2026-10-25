@@ -13,6 +13,8 @@ AI_DAILY_CHAT = "60"
 AI_DAILY_RECIPE = "20"
 AI_DAILY_FOODS = "20"
 AI_MONTHLY_REQUEST_CAP = "5000"
+WEB_DAILY_SEARCHES = "30"
+WEB_MONTHLY_SEARCHES = "1000"
 
 [triggers]
 crons = ["*/5 * * * *"]
@@ -37,4 +39,5 @@ database_id = "8d689615-14b6-4951-84d4-651d92eb0970"
 #   npx wrangler secret put VAPID_SUBJECT
 #   npx wrangler secret put DEEPSEEK_API_KEY
 #   npx wrangler secret put TEXTBELT_API_KEY
+#   npx wrangler secret put BRAVE_SEARCH_API_KEY
 #   npx wrangler secret put DATA_ENC_KEY   # openssl rand -base64 32

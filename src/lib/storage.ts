@@ -7,6 +7,7 @@ export const STATE_KEY = 'calai:v1';
 
 const PROBE_KEY = 'calai:storage-probe';
 const LEGACY_MARKER = 'calai:legacy-checked';
+const QUARANTINE_KEY = 'calai:quarantine';
 
 export const storageAvailable = (() => {
   try {
@@ -19,6 +20,58 @@ export const storageAvailable = (() => {
   }
 })();
 
+export type StorageStatus = {
+  blocked: boolean;
+  writeFailed: boolean;
+  quarantine: boolean;
+};
+
+let status: StorageStatus = {
+  blocked: !storageAvailable,
+  writeFailed: false,
+  quarantine: false
+};
+const statusListeners = new Set<() => void>();
+
+function publishStatus(patch: Partial<StorageStatus>): void {
+  status = { ...status, ...patch };
+  for (const listener of statusListeners) listener();
+}
+
+export function getStorageStatus(): StorageStatus {
+  return status;
+}
+
+export function subscribeStorageStatus(listener: () => void): () => void {
+  statusListeners.add(listener);
+  return () => statusListeners.delete(listener);
+}
+
+/**
+ * Keep a bounded copy of an unreadable document so a validation bug or a
+ * future schema cannot silently destroy the only diary copy. The normal state
+ * key is still removed so the app can start safely.
+ */
+function quarantine(raw: string | null, reason: string): void {
+  if (!raw) {
+    publishStatus({ quarantine: true });
+    return;
+  }
+  try {
+    localStorage.setItem(
+      QUARANTINE_KEY,
+      JSON.stringify({
+        at: Date.now(),
+        reason,
+        raw: raw.slice(0, 500_000)
+      })
+    );
+  } catch {
+    // Best effort. The original key is still removed below.
+  }
+  publishStatus({ quarantine: true });
+}
+
 /**
  * State lives in localStorage because async IndexedDB hydration could hang the whole app
  * when storage is blocked (private windows, strict privacy settings, in-app browsers). The
@@ -27,8 +80,9 @@ export const storageAvailable = (() => {
  */
 export const stateStorage: PersistStorage<PersistedData> = {
   getItem: (name) => {
+    let raw: string | null = null;
     try {
-      const raw = localStorage.getItem(name);
+      raw = localStorage.getItem(name);
       if (!raw) return null;
 
       const parsed = JSON.parse(raw) as unknown;
@@ -37,12 +91,14 @@ export const stateStorage: PersistStorage<PersistedData> = {
         typeof parsed !== 'object' ||
         !('state' in parsed)
       ) {
+        quarantine(raw, 'Persisted state is missing a state field.');
         localStorage.removeItem(name);
         return null;
       }
 
       const result = validatePersistedData((parsed as { state: unknown }).state);
       if (!result.ok) {
+        quarantine(raw, result.error);
         localStorage.removeItem(name);
         return null;
       }
@@ -52,6 +108,7 @@ export const stateStorage: PersistStorage<PersistedData> = {
         version: SCHEMA_VERSION
       } satisfies StorageValue<PersistedData>;
     } catch {
+      quarantine(raw, 'Persisted state could not be parsed.');
       try {
         localStorage.removeItem(name);
       } catch {
@@ -64,8 +121,10 @@ export const stateStorage: PersistStorage<PersistedData> = {
   setItem: (name, value) => {
     try {
       localStorage.setItem(name, JSON.stringify(value));
+      if (status.writeFailed) publishStatus({ writeFailed: false });
     } catch {
       // Quota or privacy blocking. The app keeps working in memory and the UI warns.
+      publishStatus({ writeFailed: true });
     }
   },
 

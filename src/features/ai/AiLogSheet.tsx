@@ -18,7 +18,7 @@ import {
   analyzeMealPhoto,
   parseMealText
 } from '../../lib/ai';
-import type { AiFoodItem } from '../../lib/ai';
+import type { AiFoodItem, AiWebSource } from '../../lib/ai';
 import {
   IconCamera,
   IconChevronLeft,
@@ -144,6 +144,7 @@ export function AiLogSheet({
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [uncertain, setUncertain] = useState(false);
+  const [webSources, setWebSources] = useState<AiWebSource[]>([]);
   const [drafts, setDrafts] = useState<DraftItem[]>([]);
   const [saveToLibrary, setSaveToLibrary] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -169,6 +170,7 @@ export function AiLogSheet({
     setError('');
     setNote('');
     setUncertain(false);
+    setWebSources([]);
     setDrafts([]);
     setSaveToLibrary(false);
     setSubmitError('');
@@ -192,6 +194,7 @@ export function AiLogSheet({
     setDrafts([]);
     setNote('');
     setUncertain(false);
+    setWebSources([]);
     setStatus('idle');
     setError('');
     setSubmitError('');
@@ -208,10 +211,12 @@ export function AiLogSheet({
     items: AiFoodItem[];
     note: string;
     uncertain: boolean;
+    webSources?: AiWebSource[];
   }) {
     setDrafts(result.items.map((item) => toDraft(item, allFoods)));
     setNote(result.note);
     setUncertain(result.uncertain);
+    setWebSources(result.webSources ?? []);
     setStatus('done');
   }
 
@@ -465,7 +470,8 @@ export function AiLogSheet({
         <div className="consent-box">
           <p>
             AI can be wrong about foods and portions. Photos and text are only sent when you
-            press an AI button, and they are not stored by CalAI.
+            press an AI button, and they are not stored by CalAI. Branded food names may be
+            checked against current web results.
           </p>
           <label className="check-label">
             <input
@@ -473,7 +479,9 @@ export function AiLogSheet({
               checked={consentChecked}
               onChange={(event) => setConsentChecked(event.target.checked)}
             />
-            <span>I agree to send this meal to CalAI's AI provider for an estimate.</span>
+            <span>
+              I agree to send this meal to CalAI's AI and web-search providers for an estimate.
+            </span>
           </label>
           <button
             type="button"
@@ -635,6 +643,25 @@ export function AiLogSheet({
             </p>
           ) : null}
           {note ? <p className="online-note">{note}</p> : null}
+          {webSources.length > 0 ? (
+            <p className="fine-print ai-web-sources">
+              Web-checked:{' '}
+              {webSources.map((source, index) => (
+                <span key={source.url}>
+                  {index > 0 ? ' · ' : ''}
+                  <a
+                    className="text-link"
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={source.title}
+                  >
+                    {source.domain}
+                  </a>
+                </span>
+              ))}
+            </p>
+          ) : null}
 
           <ul className="ai-item-list">
             {drafts.map((item) => {

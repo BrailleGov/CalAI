@@ -8,7 +8,7 @@ import {
   analyzeMealPhoto,
   parseMealText
 } from '../../lib/ai';
-import type { AiFoodItem } from '../../lib/ai';
+import type { AiFoodItem, AiWebSource } from '../../lib/ai';
 import { AiConsentInline } from '../../components/AiConsentInline';
 import { PhotoSourcePicker } from '../../components/PhotoSourcePicker';
 import { IconSparkles } from '../../components/icons';
@@ -36,6 +36,7 @@ export function AiFoodAssist({ onApply }: AiFoodAssistProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [error, setError] = useState('');
   const [items, setItems] = useState<AiFoodItem[]>([]);
+  const [webSources, setWebSources] = useState<AiWebSource[]>([]);
 
   if (!AI_CONFIGURED) return null;
 
@@ -44,6 +45,7 @@ export function AiFoodAssist({ onApply }: AiFoodAssistProps) {
     setStatus('idle');
     setError('');
     setItems([]);
+    setWebSources([]);
   }
 
   function apply(item: AiFoodItem) {
@@ -60,17 +62,24 @@ export function AiFoodAssist({ onApply }: AiFoodAssistProps) {
     resetResults();
   }
 
-  async function run(task: (signal: AbortSignal) => Promise<{ items: AiFoodItem[] }>) {
+  async function run(
+    task: (signal: AbortSignal) => Promise<{
+      items: AiFoodItem[];
+      webSources?: AiWebSource[];
+    }>
+  ) {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setStatus('loading');
     setError('');
     setItems([]);
+    setWebSources([]);
     try {
       const result = await task(controller.signal);
       if (controller.signal.aborted) return;
       setItems(result.items);
+      setWebSources(result.webSources ?? []);
       setStatus('done');
     } catch (errorValue) {
       if (controller.signal.aborted) return;
@@ -188,6 +197,25 @@ export function AiFoodAssist({ onApply }: AiFoodAssistProps) {
                   </li>
                 ))}
               </ul>
+              {webSources.length > 0 ? (
+                <p className="fine-print ai-web-sources">
+                  Web-checked:{' '}
+                  {webSources.map((source, index) => (
+                    <span key={source.url}>
+                      {index > 0 ? ' · ' : ''}
+                      <a
+                        className="text-link"
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={source.title}
+                      >
+                        {source.domain}
+                      </a>
+                    </span>
+                  ))}
+                </p>
+              ) : null}
               <p className="fine-print">
                 Estimates only. Check and edit every value before saving.
               </p>

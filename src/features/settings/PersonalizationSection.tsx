@@ -550,7 +550,8 @@ export function PersonalizationSection() {
                 />
                 <span>
                   I agree to send only the meal content I choose, plus totals and preferences, to
-                  CalAI's AI provider.
+                  CalAI's AI provider. Branded food names may also be checked with a web-search
+                  provider.
                 </span>
               </label>
               {errors.consent ? (

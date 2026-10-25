@@ -53,7 +53,7 @@ async function readError(response: Response): Promise<string> {
   return 'Cloud backup is unavailable right now.';
 }
 
-async function requireToken(): Promise<string> {
+export async function ensureSyncToken(): Promise<string> {
   if (!SYNC_CONFIGURED) {
     throw new SyncError(
       'Cloud backup needs the CalAI service. Deploy the Worker and set VITE_API_BASE.',
@@ -63,6 +63,10 @@ async function requireToken(): Promise<string> {
   const existing = getSyncToken();
   if (existing) return existing;
   return registerDevice();
+}
+
+async function requireToken(): Promise<string> {
+  return ensureSyncToken();
 }
 
 export async function registerDevice(): Promise<string> {
@@ -170,8 +174,11 @@ export async function pullCloudSnapshot(): Promise<PersistedData> {
 }
 
 export async function deleteCloudSnapshot(): Promise<void> {
+  if (!SYNC_CONFIGURED) return;
   const token = getSyncToken();
-  if (!token || !SYNC_CONFIGURED) return;
+  if (!token) {
+    throw new SyncError('This device is not connected to cloud backup.', 401);
+  }
   const device = getDeviceToken();
   const response = await fetch(`${API_BASE}/v1/sync`, {
     method: 'DELETE',
@@ -185,5 +192,6 @@ export async function deleteCloudSnapshot(): Promise<void> {
   if (!response.ok && response.status !== 404) {
     throw new SyncError(await readError(response), response.status);
   }
-  clearSyncToken();
+  // Keep the device token: the same token authenticates SMS reminders, and
+  // clearing it here would orphan an enabled SMS row on the server.
 }

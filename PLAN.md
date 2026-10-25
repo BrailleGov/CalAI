@@ -1,10 +1,10 @@
 # CalAI — product plan
 
-Status: **v0.3.0 is live (alpha).** The Cloudflare Worker is deployed with KV, D1, all runtime
-secrets, and VAPID keys, and the Pages build injects `VITE_API_BASE`. AI, the shared food
-library, SMS, cloud backup, and cached search are active; push endpoints are dormant. Remaining
-release work is physical-device verification, an end-to-end SMS delivery check, and the formal
-AI eval.
+Status: **v0.3.0 is live (alpha); v0.3.1 hardening and Brave web grounding are in progress.**
+The Cloudflare Worker is deployed with KV, D1, all runtime secrets, and VAPID keys, and the
+Pages build injects `VITE_API_BASE`. AI, the shared food library, SMS, cloud backup, and cached
+search are active; push endpoints are dormant and now require device auth. Remaining release
+work is physical-device verification, an end-to-end SMS delivery check, and the formal AI eval.
 
 Last updated: 2026-10-25
 Live: <https://braillegov.github.io/CalAI/>
@@ -233,6 +233,20 @@ configured-AI test against a mocked Worker); axe 0 violations on new screens; no
 overflow; initial JS 117.1 KB gzip, CSS 8.9 KB gzip. Live deployment checks listed above
 passed, including a real banana photo. Textbelt accepted one consented test text; quota moved
 193 → 192. Deployment smoke rows were removed from D1 afterwards.
+
+### v0.3.1 — Web grounding and hardening (in progress)
+
+- **Brave Search grounding.** The Worker accepts a model-chosen `webQuery` for branded,
+  packaged, or restaurant items and refines nutrition with current public snippets. Food
+  discovery is also web-grounded and returns `web: true` results for a “Web + AI” label.
+- **Hardening.** Cloud-backup removal and reset no longer orphan SMS auth or leave the cloud
+  snapshot behind; invalid local state is quarantined; quota counters prefer atomic D1; the
+  dormant push endpoints require device auth; CI typechecks the Worker.
+- **Privacy.** Brave receives only food/brand text, never photos, diary rows, or health values.
+  AI consent copy now names the web-search provider.
+- **Verification.** 97 unit tests pass; 34 local-first Playwright tests plus the configured-AI
+  test pass; initial JS 125.6 KB gzip; the Worker deployed with `webSearch: true` and live
+  branded parse/discovery returned web sources. Pages deployment is pending the GitHub push.
 
 ### v1.0 — Public launch (planned)
 

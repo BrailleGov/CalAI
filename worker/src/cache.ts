@@ -1,7 +1,7 @@
+import { consumeQuota } from './quota';
 import type { Env } from './types';
 
 const SEARCH_TTL_SECONDS = 7 * 24 * 60 * 60;
-const RATE_TTL_SECONDS = 24 * 60 * 60;
 
 export async function readCache<T>(env: Env, key: string): Promise<T | null> {
   if (!env.CALAI_CACHE) return null;
@@ -40,24 +40,12 @@ export async function checkRateLimit(
   env: Env,
   ip: string | null
 ): Promise<boolean> {
-  if (!env.CALAI_CACHE || !ip) return true;
+  if (!ip) return true;
 
   const limit = Math.max(
     20,
     Number(env.DAILY_SEARCH_LIMIT ?? '300') || 300
   );
   const day = new Date().toISOString().slice(0, 10);
-  const key = `rate:${day}:${ip}`;
-
-  try {
-    const raw = await env.CALAI_CACHE.get(key);
-    const count = raw ? Number(raw) || 0 : 0;
-    if (count >= limit) return false;
-    await env.CALAI_CACHE.put(key, String(count + 1), {
-      expirationTtl: RATE_TTL_SECONDS
-    });
-    return true;
-  } catch {
-    return true;
-  }
+  return consumeQuota(env, `search:${day}:${ip}`, limit);
 }

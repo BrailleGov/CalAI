@@ -2,13 +2,14 @@
 
 Optional Cloudflare Worker for CalAI. The PWA remains local-first and fully usable without
 it. The Worker adds cached food search, USDA results, a shared AI food library, DeepSeek AI,
-encrypted cloud backup, outbound Textbelt SMS reminders, and (dormant) Web Push endpoints.
+Brave Search grounding for branded nutrition, encrypted cloud backup, outbound Textbelt SMS
+reminders, and (dormant, now authenticated) Web Push endpoints.
 
 Deployed: <https://calai-api.braille.workers.dev> (account `6e8aa19c29eece010d2447b7f666632b`).
 KV `CALAI_CACHE` and D1 `calai` ids are committed in `wrangler.toml`; runtime secrets live in
-Cloudflare. `GET /health` reports `search/ai/sharedFoods/sync/sms/push` all true. Local `wrangler dev`
-still fails to start workerd on this Windows/Node 20 machine; live HTTP behavior is verified
-with the deployed Worker instead.
+Cloudflare. `GET /health` reports `search/ai/webSearch/sharedFoods/sync/sms/push` all true.
+Local `wrangler dev` still fails to start workerd on this Windows/Node 20 machine; live HTTP
+behavior is verified with the deployed Worker instead.
 
 ## Endpoints
 
@@ -18,15 +19,15 @@ with the deployed Worker instead.
 | GET | `/v1/foods/search?q=oat+milk&limit=20` | Open Food Facts + optional USDA, KV-cached 7 days |
 | GET | `/v1/foods/barcode/:code` | Open Food Facts barcode lookup, cached |
 | GET | `/v1/foods/library?q=paneer` | Search AI-generated foods shared across devices |
-| POST | `/v1/foods/discover` | DeepSeek generates 4–6 foods, stores them in the shared D1 library |
-| POST | `/v1/push/subscribe` | Store/update a push subscription and reminder times |
-| POST | `/v1/push/unsubscribe` | Remove a push subscription |
+| POST | `/v1/foods/discover` | Brave + DeepSeek generate 4–6 foods; stores them in the shared D1 library |
+| POST | `/v1/push/subscribe` | Store/update a push subscription and reminder times (device auth required) |
+| POST | `/v1/push/unsubscribe` | Remove a push subscription (device auth + ownership required) |
 | POST | `/v1/auth/register` | Issue a device token; stores only its SHA-256 hash |
 | PUT | `/v1/sync` | Encrypt and store a device-scoped snapshot |
 | GET | `/v1/sync` | Decrypt and return this device's snapshot |
 | DELETE | `/v1/sync` | Delete the snapshot |
-| POST | `/v1/ai/recognize` | Meal photo → structured food candidates (DeepSeek vision) |
-| POST | `/v1/ai/parse` | Meal text → structured items |
+| POST | `/v1/ai/recognize` | Meal photo → structured candidates; branded items are web-refined |
+| POST | `/v1/ai/parse` | Meal text → structured items; branded items are web-refined |
 | POST | `/v1/ai/chat` | Grounded coach answer + optional log proposal |
 | POST | `/v1/ai/recipes` | Generate a recipe or rank curated candidates |
 | POST | `/v1/sms/prefs` | Save consent, encrypted phone, reminders, timezone |
@@ -48,6 +49,7 @@ npx wrangler d1 create calai
 
 npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put TEXTBELT_API_KEY
+npx wrangler secret put BRAVE_SEARCH_API_KEY  # web grounding for branded foods
 npx wrangler secret put DATA_ENC_KEY          # 32 random bytes, base64
 npx wrangler secret put USDA_API_KEY          # optional
 npx wrangler secret put VAPID_PUBLIC_KEY      # optional push
@@ -85,6 +87,10 @@ variable.
 - `DEEPSEEK_API_KEY` — required for AI. Model defaults to `deepseek-flash`
   (DeepSeek-V4.1-Flash-1017); override with `DEEPSEEK_MODEL`. Base URL defaults to
   `https://api.deepseek.com`.
+- `BRAVE_SEARCH_API_KEY` — optional but recommended. Enables web grounding for branded or
+  packaged foods and food discovery. The key never reaches the client.
+- `WEB_DAILY_SEARCHES` / `WEB_MONTHLY_SEARCHES` — Brave query caps; defaults `30` per
+  device+IP per UTC day and `1000` globally per month. Results are cached for 24 hours.
 - `TEXTBELT_API_KEY` — required for SMS. Base URL defaults to `https://textbelt.com`.
 - `DATA_ENC_KEY` — required for encrypted cloud snapshots and encrypted SMS phone numbers.
 - `USDA_API_KEY` — optional. Without it, search returns Open Food Facts only.
@@ -122,9 +128,17 @@ encrypted table.
   writing entries.
 - Thinking is disabled for latency. Requests have explicit timeouts and no automatic retries
   to avoid duplicate spend.
+- Branded, packaged, or restaurant items can carry a model-chosen `webQuery`. The Worker
+  searches Brave for that product and runs one refinement pass using only clearly matching
+  snippets. If the lookup is unavailable, over quota, or ambiguous, the original estimate is
+  kept. The response includes `webSources` for the UI's “Web-checked” links.
 - Food search discovery asks DeepSeek for generic foods matching the query, clamps and
-  dedupes them, and stores them in `shared_foods` for every device. A shared lookup runs first;
-  when at least four stored matches exist, no model call is made. Values are estimates.
+  dedupes them, and stores them in `shared_foods` for every device. When Brave is configured,
+  the query is grounded with current web snippets and foods are marked `web: true`. A shared
+  lookup runs first; when at least four stored matches exist, no model or web call is made.
+  Values are estimates.
+- Web snippets are treated as untrusted data, stripped of HTML, capped, and never rendered as
+  HTML. Search queries contain food/brand text only, never diary rows, photos, or health values.
 - AI output is an estimate, not medical advice. A formal eval set and stronger abuse control
   (Turnstile/accounts) are still needed before public scale.
 
@@ -149,6 +163,7 @@ cd worker
 # .dev.vars is gitignored; put local-only values there:
 # DEEPSEEK_API_KEY=...
 # TEXTBELT_API_KEY=...
+# BRAVE_SEARCH_API_KEY=...
 # DATA_ENC_KEY=...
 npx wrangler dev
 # then build/run the PWA with VITE_API_BASE=http://localhost:8787
@@ -185,7 +200,8 @@ after verification, so `devices`, `sync_snapshots`, and `sms_prefs` are empty.
 
 Queries go to Open Food Facts (and USDA when configured) only when the user searches. AI
 requests happen only after explicit consent and contain the chosen photo/text, search words,
-or locally computed aggregates. The Worker does not log prompts, photos, food names, calorie
-values, phone numbers, or keys. It stores device hashes, encrypted snapshots, encrypted SMS
-preferences, SMS delivery status, quotas, push subscriptions, and the public shared food
-library (AI-generated names and nutrition only).
+or locally computed aggregates. Branded food names may be sent to Brave Search; photos, diary
+rows, and health values never are. The Worker does not log prompts, photos, food names,
+calorie values, phone numbers, or keys. It stores device hashes, encrypted snapshots,
+encrypted SMS preferences, SMS delivery status, quotas, authenticated push subscriptions, and
+the public shared food library (AI/web-grounded names and nutrition only).

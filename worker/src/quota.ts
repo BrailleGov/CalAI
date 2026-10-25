@@ -12,7 +12,8 @@ function memoryConsume(key: string, limit: number): boolean {
 
 /**
  * Increments a counter and returns whether the request is within `limit`.
- * KV is preferred, then D1, then isolate memory (best effort for local dev).
+ * D1 is preferred because its increment is atomic; KV is a best-effort
+ * fallback and isolate memory is used only for local development.
  */
 export async function consumeQuota(
   env: Env,
@@ -20,18 +21,6 @@ export async function consumeQuota(
   limit: number
 ): Promise<boolean> {
   if (!Number.isFinite(limit) || limit <= 0) return false;
-
-  if (env.CALAI_CACHE) {
-    try {
-      const raw = await env.CALAI_CACHE.get(key);
-      const next = (raw ? Number(raw) || 0 : 0) + 1;
-      if (next > limit) return false;
-      await env.CALAI_CACHE.put(key, String(next), { expirationTtl: 35 * 24 * 60 * 60 });
-      return true;
-    } catch {
-      // Fall through to D1 or memory.
-    }
-  }
 
   if (env.DB) {
     try {
@@ -47,6 +36,18 @@ export async function consumeQuota(
         .bind(key)
         .first<{ count: number }>();
       return (row?.count ?? 1) <= limit;
+    } catch {
+      // Fall through to KV or memory.
+    }
+  }
+
+  if (env.CALAI_CACHE) {
+    try {
+      const raw = await env.CALAI_CACHE.get(key);
+      const next = (raw ? Number(raw) || 0 : 0) + 1;
+      if (next > limit) return false;
+      await env.CALAI_CACHE.put(key, String(next), { expirationTtl: 35 * 24 * 60 * 60 });
+      return true;
     } catch {
       // Fall through to memory.
     }

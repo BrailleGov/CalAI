@@ -60,4 +60,25 @@ describe('shared food library', () => {
     expect(first[0]?.id).toMatch(/^ai-[a-f0-9]{24}$/);
     await expect(searchSharedFoods(env, 'paneer')).resolves.toEqual([]);
   });
+
+  it('marks web-grounded foods without changing the legacy source field', async () => {
+    const env = {} as Env;
+    const [food] = await saveSharedFoods(
+      env,
+      'coke zero',
+      [
+        {
+          name: 'Coca-Cola Zero',
+          brand: 'Coca-Cola',
+          servingLabel: '355 ml can',
+          servingGrams: 355,
+          nutrients: { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+          category: 'drinks'
+        }
+      ],
+      'web'
+    );
+
+    expect(food).toMatchObject({ source: 'ai', web: true });
+  });
 });

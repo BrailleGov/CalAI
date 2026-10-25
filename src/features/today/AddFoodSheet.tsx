@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Food, Meal, Nutrients } from '../../types';
-import { FOOD_SOURCE_LABELS, MEAL_LABELS } from '../../types';
+import { foodSourceLabel, MEAL_LABELS } from '../../types';
 import { SEED_FOODS } from '../../data/seedFoods';
 import { useAppStore } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast';
@@ -54,7 +54,7 @@ function foodKey(food: Food): string {
 }
 
 function SourceBadge({ food }: { food: Food }) {
-  const label = FOOD_SOURCE_LABELS[food.source];
+  const label = foodSourceLabel(food);
   if (!label) return null;
   return <span className="badge">{label}</span>;
 }

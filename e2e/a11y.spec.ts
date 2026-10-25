@@ -3,6 +3,9 @@ import { expect, test } from '@playwright/test';
 import { completeOnboarding, logSeedFood } from './helpers';
 
 async function expectNoViolations(page: import('@playwright/test').Page, label: string) {
+  // Page transitions fade in for 350 ms. Let the route commit and animation
+  // start before finishing it; otherwise axe can sample opacity: 0.
+  await page.waitForTimeout(450);
   await page.evaluate(() => {
     for (const animation of document.getAnimations()) {
       try {
@@ -12,6 +15,7 @@ async function expectNoViolations(page: import('@playwright/test').Page, label: 
       }
     }
   });
+  await page.waitForTimeout(50);
 
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])

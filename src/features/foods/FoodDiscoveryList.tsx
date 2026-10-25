@@ -1,5 +1,5 @@
 import type { Food } from '../../types';
-import { FOOD_SOURCE_LABELS } from '../../types';
+import { foodSourceLabel } from '../../types';
 import { formatNumber } from '../../lib/format';
 import { IconPlus } from '../../components/icons';
 import { AiConsentInline } from '../../components/AiConsentInline';
@@ -70,7 +70,7 @@ export function FoodDiscoveryList({
                 <span className="food-row-main">
                   <span className="food-name">
                     {food.name}
-                    <span className="badge">{FOOD_SOURCE_LABELS[food.source]}</span>
+                    <span className="badge">{foodSourceLabel(food)}</span>
                   </span>
                   <span className="food-meta">
                     {food.brand ? `${food.brand} · ` : ''}

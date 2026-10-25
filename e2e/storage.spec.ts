@@ -45,6 +45,10 @@ test.describe('storage failure modes', () => {
     await expect
       .poll(() => page.evaluate(() => localStorage.getItem('calai:v1')))
       .not.toBe('{not valid json');
+    const quarantine = await page.evaluate(() =>
+      localStorage.getItem('calai:quarantine')
+    );
+    expect(quarantine).toContain('Persisted state could not be parsed');
   });
 
   test('discards a persisted document with an invalid shape', async ({ page }) => {

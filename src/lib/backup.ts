@@ -104,6 +104,7 @@ function isFood(value: unknown): value is Food {
     (value.brand === undefined || typeof value.brand === 'string') &&
     (value.barcode === undefined || typeof value.barcode === 'string') &&
     (value.servingGrams === undefined || isNumber(value.servingGrams, 0, 100000)) &&
+    (value.web === undefined || typeof value.web === 'boolean') &&
     (value.category === undefined ||
       FOOD_CATEGORY_VALUES.includes(value.category as FoodCategory))
   );

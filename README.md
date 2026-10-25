@@ -2,7 +2,7 @@
 
 A mobile-first calorie tracker that installs from the web and works offline.
 
-**v0.3.0 alpha (live)** — <https://braillegov.github.io/CalAI/> · API:
+**v0.3.1 alpha (in progress; v0.3.0 remains live)** — <https://braillegov.github.io/CalAI/> · API:
 <https://calai-api.braille.workers.dev>
 
 ## What works
@@ -21,10 +21,12 @@ A mobile-first calorie tracker that installs from the web and works offline.
 - Barcode lookup: `BarcodeDetector` with a lazy-loaded ZXing fallback, plus manual entry.
 - AI photo logging is the default add flow: downscale on-device, identify multiple visible
   foods, show confidence, match against the local library, edit portions and macros, then
-  confirm before logging. Manual search and barcode stay one tap away.
+  confirm before logging. Branded, packaged, or restaurant items are cross-checked against
+  current web results before review. Manual search and barcode stay one tap away.
 - AI food discovery: searches check a shared library, then ask DeepSeek for several matching
-  foods and store them for every device, with a live “finding items” indicator. New custom
-  foods and quick adds can also be filled from a photo or a short description.
+  foods and store them for every device, with a live “finding items” indicator. Branded
+  searches can be grounded with Brave Search results. New custom foods and quick adds can
+  also be filled from a photo or a short description.
 - Natural-language logging: AI parsing when configured, with a conservative offline matcher
   for phrases like “2 eggs and banana”. Nothing is logged without confirmation.
 - AI coach: questions answered from locally computed 7/14/30-day aggregates, with a visible
@@ -56,9 +58,10 @@ HashRouter, plain CSS with design tokens, and a hand-written service worker via
 
 The optional backend is a Cloudflare Worker in `worker/`: KV cache for food search, D1 for
 device auth, encrypted snapshots, SMS preferences, and the shared AI food library, DeepSeek
-`deepseek-flash` (DeepSeek-V4.1-Flash-1017) for vision/text/chat/recipes/food discovery, and
-Textbelt for outbound SMS. Web Push endpoints remain but are dormant. `@zxing/browser` is
-loaded only when a browser lacks `BarcodeDetector`.
+`deepseek-flash` (DeepSeek-V4.1-Flash-1017) for vision/text/chat/recipes/food discovery,
+Brave Search for current branded nutrition and ingredient evidence, and Textbelt for
+outbound SMS. Web Push endpoints remain but are dormant and now require device auth.
+`@zxing/browser` is loaded only when a browser lacks `BarcodeDetector`.
 
 ## Structure
 
@@ -85,7 +88,7 @@ loaded only when a browser lacks `BarcodeDetector`.
 │   ├── styles/global.css
 │   └── sw.ts                   # precache, offline shell, push handlers
 ├── worker/
-│   ├── src/                    # router, AI, auth, D1 sync, SMS, push, search
+│   ├── src/                    # router, AI, Brave web search, auth, D1 sync, SMS, push
 │   ├── migrations/0001_init.sql
 │   └── .
 ├── e2e/                        # committed Playwright + axe suite
@@ -108,7 +111,7 @@ npm run dev        # http://localhost:5173/CalAI/
 Checks:
 
 ```powershell
-npm test           # 86 unit tests, including Worker AI/SMS/shared food/crypto
+npm test           # 97 unit tests, including Worker AI/web/SMS/shared food/crypto
 npm run typecheck
 npm run build
 npm run test:e2e   # builds, then 34 Playwright tests at 390 × 844
@@ -137,8 +140,8 @@ AI food library, encrypted cloud backup, and SMS. Web Push endpoints are dormant
 Deployed bindings: account `6e8aa19c29eece010d2447b7f666632b`, KV `CALAI_CACHE`
 (`4720c88208744717a583112e89def60f`), D1 `calai` (`8d689615-14b6-4951-84d4-651d92eb0970`),
 Worker `https://calai-api.braille.workers.dev`. The ids are committed in
-`worker/wrangler.toml`; secrets are not. `/health` reports `search`, `ai`, `sharedFoods`,
-`sync`, `sms`, and `push` as true.
+`worker/wrangler.toml`; secrets are not. `/health` reports `search`, `ai`, `webSearch`,
+`sharedFoods`, `sync`, `sms`, and `push` as true.
 
 To provision an equivalent Worker from scratch:
 
@@ -152,6 +155,7 @@ npx wrangler d1 create calai
 # Server-side secrets (never commit these):
 npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put TEXTBELT_API_KEY
+npx wrangler secret put BRAVE_SEARCH_API_KEY  # web grounding for branded foods
 npx wrangler secret put DATA_ENC_KEY          # 32 random bytes, base64
 npx wrangler secret put USDA_API_KEY          # optional
 npx wrangler secret put VAPID_PUBLIC_KEY      # optional push
@@ -199,11 +203,15 @@ For local Worker development, `worker/.dev.vars` is gitignored. Wrangler loads i
   not saved.
 - Online search is opt-in per query. With no Worker configured, the query goes directly to
   Open Food Facts. Foods you log are cached locally under a 100-item cap.
-- AI is opt-in. Photo, text, coach, and recipe ideas are off by default except offline text
-  matching. The first AI use requires explicit consent. Requests carry a random device token,
-  not an account. The Worker does not log photo, text, or diary content.
+- AI is opt-in. Photo and text shortcuts are visible by default in v0.3.1, but no AI request
+  is sent until you explicitly consent; coach and recipe ideas default off. Requests carry a
+  random device token, not an account. The Worker does not log photo, text, or diary content.
 - Photos are downscaled and re-encoded on-device, which strips EXIF (including location).
   Only the chosen photo is sent, only when you press an AI button.
+- For branded, packaged, or restaurant items, the Worker may send the model-chosen brand and
+  product name to Brave Search and use public result snippets to improve nutrition and
+  ingredient notes. The image itself, diary rows, and health values are not sent to the search
+  provider. Web results are cached for 24 hours and are labelled “Web + AI” in the library.
 - The coach computes 7/14/30-day totals, averages, weights, water, preferences, and recent
   food names on-device. It does not ship raw diary rows.
 - Cloud backup is optional and encrypted with AES-GCM before it reaches D1. The server stores
@@ -215,9 +223,10 @@ For local Worker development, `worker/.dev.vars` is gitignored. Wrangler loads i
   snapshots. Like the diary, the number is also held in this device's local app storage until
   you turn SMS off or clear site data.
 - AI food searches send only the typed search words and receive shared, AI-generated food
-  names and nutrition. No diary rows or health values are included.
-- Dormant Web Push code would store only a device token, subscription keys, timezone, reminder
-  times, and quiet hours; no client subscribes today.
+  names and nutrition; branded searches may also query Brave Search. No diary rows or health
+  values are included.
+- Dormant Web Push endpoints now require device auth and store only a device token,
+  subscription keys, timezone, reminder times, and quiet hours; no client subscribes today.
 - `noindex` and `robots.txt` keep the alpha out of search results. Remove both before a public
   launch.
 - Nutrition and AI values are estimates, not medical advice. Onboarding and target editing
@@ -235,6 +244,11 @@ For local Worker development, `worker/.dev.vars` is gitignored. Wrangler loads i
 - Cloud sync is whole-document, last-write-wins; there is no conflict merge or multi-device
   account. Restoring replaces the local diary after confirmation.
 - Only Chromium is covered by the committed E2E suite.
+- Production dependency audit is clean (`npm audit --omit=dev`). Three dev-only Vitest 3
+  advisories remain until the test runner is upgraded to the next major version.
+- Brave results can be stale, promotional, or about a different package size. The refinement
+  prompt requires a clear product/serving match and falls back to the AI estimate otherwise,
+  but web-grounded values are still estimates.
 
 ## Deployment
 
@@ -253,10 +267,11 @@ The Worker deploys separately from `worker/` with `npx wrangler deploy`. See
 
 ## Quality bar
 
-- Unit tests: 86 across nutrition/target math, dates, search, backup validation and
+- Unit tests: 97 across nutrition/target math, dates, search, backup validation and
   v1/v2→v3 migration, legacy IndexedDB recovery, recipes, curated recipe integrity,
   remote parsing, preferences, local text parsing, image sizing, assistant context, SMS
-  helpers, shared AI food normalization, and Worker AI/SMS handling.
+  helpers, shared AI food normalization, Brave search sanitization/caching, web refinement,
+  and Worker AI/SMS handling.
 - Playwright: 35 tests. The default local-first run has 34 passing (the configured-AI test is
   skipped); the Worker-enabled build runs that 35th test against a mocked Worker. Coverage
   includes onboarding (including goal/preferences steps), logging, edit/delete, quick add,
@@ -265,20 +280,23 @@ The Worker deploys separately from `worker/` with `npx wrangler deploy`. See
   discovery, barcode, recipes, curated recipe save/detail, offline text logging, water, weight,
   SMS-only settings, AI setup and configured states, cloud/SMS setup states, layout, and axe.
 - Configured-AI suite: `e2e/ai-configured.spec.ts` is skipped in the default local-first build.
-  Built with `VITE_API_BASE` and a mocked Worker, it covers photo → review → log, the coach
-  proposal → confirm flow, AI recipe picks, and recipe generation/save.
+  Built with `VITE_API_BASE` and a mocked Worker, it covers photo → review → log with a
+  “Web-checked” source link, the coach proposal → confirm flow, AI recipe picks, and recipe
+  generation/save.
 - axe-core: 0 WCAG 2.0/2.1/2.2 A/AA violations across onboarding, today, add/edit sheets,
   foods, recipes, curated detail, history, settings (including SMS), barcode, AI result sheet,
   assistant, and both themes.
 - Layout: no horizontal overflow at 360/390 px on Today, Foods, Recipes, History, Settings,
   Discover, and Assistant.
-- Bundle: initial JS 117.5 KB gzip + 2.4 KB workbox window; CSS 9.4 KB gzip; lazy ZXing
+- Bundle: initial JS 125.6 KB gzip + 2.4 KB workbox window; CSS 9.6 KB gzip; lazy ZXing
   chunk 108.7 KB gzip. Under the 200 KB initial-JS budget.
-- PWA precache: 17 entries, 874.3 KiB. Service worker: injectManifest with navigation fallback
-  and dormant push handlers.
+- PWA precache: 17 entries, 898.2 KiB. Service worker: injectManifest with navigation fallback
+  and dormant, authenticated push handlers.
 - Live deployment verification (2026-10-25): `/health` reports
-  search/AI/sharedFoods/sync/SMS/push true; “paneer” discovery returned and stored six AI foods
-  and the shared-library lookup returned them without another model call;
+  search/AI/webSearch/sharedFoods/sync/SMS/push true; a live branded parse returned
+  `webSources`; “coca cola zero” discovery returned web-grounded foods; “paneer” discovery
+  returned and stored six AI foods and the shared-library lookup returned them without another
+  model call;
   Open Food Facts search through KV returns results with CORS for the Pages origin; device
   registration, encrypted snapshot PUT/GET/DELETE round-tripped and returned 404 afterwards;
   DeepSeek text parse, coach answer with a 7-day window, recipe generation, and vision on a
@@ -291,8 +309,8 @@ The Worker deploys separately from `worker/` with `npx wrangler deploy`. See
 
 ## Next
 
-Rotate the DeepSeek and Textbelt keys that were shared in chat, run an end-to-end SMS consent /
-delivery / opt-out test, test the installed PWA on physical iOS and Android, add the formal AI
-eval set, and run Lighthouse on the v0.3 bundle. The shared AI food library is new and should be
+Rotate the DeepSeek, Textbelt, and Brave Search keys that were shared in chat, run an
+end-to-end SMS consent / delivery / opt-out test, test the installed PWA on physical iOS and
+Android, add the formal AI eval set, and run Lighthouse on the v0.3 bundle. The shared AI food library is new and should be
 sampled for accuracy before public launch. See [PLAN.md](PLAN.md),
 [docs/architecture.md](docs/architecture.md), and [NOTES.md](NOTES.md).

@@ -10,7 +10,7 @@ type AiConsentInlineProps = {
 
 export function AiConsentInline({
   action = 'Enable AI',
-  message = 'AI estimates are optional. Your request is sent to CalAI’s AI provider and is not stored.',
+  message = 'AI estimates are optional. Your request may be sent to CalAI’s AI and web-search providers and is not stored.',
   onEnabled
 }: AiConsentInlineProps) {
   const updatePreferences = useAppStore((state) => state.updatePreferences);
@@ -26,7 +26,7 @@ export function AiConsentInline({
           checked={checked}
           onChange={(event) => setChecked(event.target.checked)}
         />
-        <span>I agree to send this request to CalAI’s AI provider.</span>
+        <span>I agree to send this request to CalAI’s AI and web-search providers.</span>
       </label>
       <button
         type="button"

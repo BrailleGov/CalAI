@@ -759,7 +759,7 @@ export function Onboarding() {
                   <span>
                     I understand AI estimates can be wrong and agree to send only the meal photo
                     or text I choose, plus a summary of my totals and preferences, to CalAI's AI
-                    provider.
+                    provider. Branded food names may also be checked with a web-search provider.
                   </span>
                 </label>
                 <p className="fine-print">

@@ -17,6 +17,7 @@ import {
 } from './cache';
 import { sha256Hex } from './crypto';
 import { dedupeFoods, rankFoods } from './normalize';
+import { consumeQuota, dayKey } from './quota';
 import { lookupOffBarcode, searchOff } from './providers/off';
 import { searchUsda } from './providers/usda';
 import { searchSharedFoods } from './sharedFoods';
@@ -352,6 +353,20 @@ async function handlePushSubscribe(
     return errorResponse('Push reminders are not configured.', 503, headers);
   }
 
+  const deviceAuth = await authenticateDevice(env, request);
+  if (!deviceAuth.ok) {
+    return errorResponse(deviceAuth.error, deviceAuth.status, headers);
+  }
+  if (
+    !(await consumeQuota(
+      env,
+      `push:subscribe:${dayKey()}:${deviceAuth.deviceId}`,
+      20
+    ))
+  ) {
+    return errorResponse('Too many subscription attempts today.', 429, headers);
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -396,17 +411,15 @@ async function handlePushSubscribe(
     return errorResponse('Invalid subscription.', 400, headers);
   }
 
-  const deviceId = (request.headers.get('X-CalAI-Device') ?? '').slice(0, 80);
+  const deviceId = deviceAuth.deviceId;
   const key = await pushKey(endpoint);
-  const deviceKey = deviceId ? `device:${deviceId}` : null;
+  const deviceKey = `device:${deviceId}`;
 
-  if (deviceKey) {
-    const previousKey = await env.CALAI_CACHE.get(deviceKey);
-    if (previousKey && previousKey !== key) {
-      await env.CALAI_CACHE.delete(previousKey);
-    }
-    await env.CALAI_CACHE.put(deviceKey, key);
+  const previousKey = await env.CALAI_CACHE.get(deviceKey);
+  if (previousKey && previousKey !== key) {
+    await env.CALAI_CACHE.delete(previousKey);
   }
+  await env.CALAI_CACHE.put(deviceKey, key);
 
   const stored: PushRecord = {
     endpoint,
@@ -433,6 +446,9 @@ async function handlePushUnsubscribe(
     return errorResponse('Push reminders are not configured.', 503, headers);
   }
 
+  const auth = await authenticateDevice(env, request);
+  if (!auth.ok) return errorResponse(auth.error, auth.status, headers);
+
   let body: unknown;
   try {
     body = await request.json();
@@ -451,9 +467,10 @@ async function handlePushUnsubscribe(
 
   const key = await pushKey(endpoint);
   const raw = await env.CALAI_CACHE.get(key, 'json');
-  if (isPushRecord(raw) && raw.deviceId) {
-    await env.CALAI_CACHE.delete(`device:${raw.deviceId}`);
+  if (!isPushRecord(raw) || raw.deviceId !== auth.deviceId) {
+    return errorResponse('Subscription not found.', 404, headers);
   }
+  await env.CALAI_CACHE.delete(`device:${raw.deviceId}`);
   await env.CALAI_CACHE.delete(key);
   return json({ ok: true }, 200, headers);
 }
@@ -575,11 +592,15 @@ export default {
             ok: true,
             search: true,
             ai: Boolean(env.DEEPSEEK_API_KEY),
+            webSearch: Boolean(env.BRAVE_SEARCH_API_KEY),
             sharedFoods: Boolean(env.DB),
             sync: Boolean(env.DB && env.DATA_ENC_KEY),
             sms: Boolean(env.TEXTBELT_API_KEY && env.DB && env.DATA_ENC_KEY),
             push: Boolean(
-              env.CALAI_CACHE && env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY
+              env.CALAI_CACHE &&
+                env.DB &&
+                env.VAPID_PUBLIC_KEY &&
+                env.VAPID_PRIVATE_KEY
             )
           },
           200,

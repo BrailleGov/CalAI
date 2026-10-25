@@ -25,12 +25,20 @@ export type AiFoodItem = {
   fat: number;
   confidence: number;
   notes?: string;
+  webQuery?: string;
+};
+
+export type AiWebSource = {
+  title: string;
+  url: string;
+  domain: string;
 };
 
 export type AiAnalysis = {
   items: AiFoodItem[];
   note: string;
   uncertain: boolean;
+  webSources: AiWebSource[];
 };
 
 export type AiChatMessage = {
@@ -155,6 +163,7 @@ export function sanitizeAiItems(value: unknown, limit = 12): AiFoodItem[] {
       const name = text(record.name, 120);
       if (!name) return [];
       const gramsRaw = finite(record.grams, 0, 5000, 0);
+      const webQuery = text(record.webQuery, 120);
       return [
         {
           name,
@@ -165,11 +174,43 @@ export function sanitizeAiItems(value: unknown, limit = 12): AiFoodItem[] {
           carbs: round1(finite(record.carbs, 0, 1000)),
           fat: round1(finite(record.fat, 0, 1000)),
           confidence: finite(record.confidence, 0, 1, 0.4),
-          ...(text(record.notes, 200) ? { notes: text(record.notes, 200) } : {})
+          ...(text(record.notes, 200) ? { notes: text(record.notes, 200) } : {}),
+          ...(webQuery.length >= 3 ? { webQuery } : {})
         }
       ];
     })
     .slice(0, limit);
+}
+
+export function sanitizeWebSources(value: unknown): AiWebSource[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const sources: AiWebSource[] = [];
+
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const record = raw as Record<string, unknown>;
+    if (typeof record.url !== 'string') continue;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(record.url);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') continue;
+    if (seen.has(parsed.href)) continue;
+
+    seen.add(parsed.href);
+    sources.push({
+      title: text(record.title, 160) || parsed.hostname,
+      url: parsed.href,
+      domain: text(record.domain, 80) || parsed.hostname.replace(/^www\./, '')
+    });
+    if (sources.length >= 4) break;
+  }
+
+  return sources;
 }
 
 function sanitizeStringList(value: unknown, limit: number, max: number): string[] {
@@ -195,7 +236,7 @@ export async function analyzeMealPhoto(
       image: image.dataUrl,
       note: options.note?.slice(0, 300) ?? ''
     },
-    { ...options, timeoutMs: 60_000 }
+    { ...options, timeoutMs: 90_000 }
   );
 
   const items = sanitizeAiItems(payload.items);
@@ -212,7 +253,8 @@ export async function analyzeMealPhoto(
     uncertain:
       payload.uncertain === true ||
       items.some((item) => item.confidence < 0.55) ||
-      items.length === 0
+      items.length === 0,
+    webSources: sanitizeWebSources(payload.webSources)
   };
 }
 
@@ -228,7 +270,7 @@ export async function parseMealText(
   const payload = await requestJson<Record<string, unknown>>(
     '/v1/ai/parse',
     { text: trimmed.slice(0, 800) },
-    { ...options, timeoutMs: 35_000 }
+    { ...options, timeoutMs: 65_000 }
   );
 
   const items = sanitizeAiItems(payload.items);
@@ -243,7 +285,8 @@ export async function parseMealText(
     items,
     note: text(payload.note, 400),
     uncertain:
-      payload.uncertain === true || items.some((item) => item.confidence < 0.55)
+      payload.uncertain === true || items.some((item) => item.confidence < 0.55),
+    webSources: sanitizeWebSources(payload.webSources)
   };
 }
 

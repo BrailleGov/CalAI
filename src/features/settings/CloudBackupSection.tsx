@@ -7,9 +7,9 @@ import {
   SyncError,
   clearSyncToken,
   deleteCloudSnapshot,
+  ensureSyncToken,
   pullCloudSnapshot,
-  pushCloudSnapshot,
-  registerDevice
+  pushCloudSnapshot
 } from '../../lib/sync';
 
 function formatSynced(value: number | null): string {
@@ -39,7 +39,7 @@ export function CloudBackupSection() {
     setBusy(true);
     setError('');
     try {
-      if (!cloudSync.enabled) await registerDevice();
+      if (!cloudSync.enabled) await ensureSyncToken();
       const updatedAt = await pushCloudSnapshot(currentSnapshot());
       updateCloudSync({ enabled: true, lastSyncedAt: updatedAt });
       toast(enable ? 'Cloud backup enabled' : 'Cloud backup updated');
@@ -80,10 +80,14 @@ export function CloudBackupSection() {
     setError('');
     try {
       await deleteCloudSnapshot();
-      clearSyncToken();
+      if (!useAppStore.getState().sms.enabled) clearSyncToken();
       updateCloudSync({ enabled: false, lastSyncedAt: null });
       setConfirmDisable(false);
-      toast('Cloud backup turned off');
+      toast(
+        useAppStore.getState().sms.enabled
+          ? 'Cloud backup turned off; SMS reminders stay connected'
+          : 'Cloud backup turned off'
+      );
     } catch (errorValue) {
       setError(
         errorValue instanceof SyncError
