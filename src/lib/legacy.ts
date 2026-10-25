@@ -28,7 +28,9 @@ export function parseLegacyState(raw: string | null | undefined): PersistedData 
 
 export function needsLegacyCheck(): boolean {
   try {
-    return !localStorage.getItem(STATE_KEY) && !hasLegacyMarker();
+    // Run once even when Zustand already wrote default state. The import is guarded by the
+    // caller so real localStorage data is never overwritten.
+    return !hasLegacyMarker();
   } catch {
     return false;
   }
