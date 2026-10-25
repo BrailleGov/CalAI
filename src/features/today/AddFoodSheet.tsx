@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Food, Meal, Nutrients } from '../../types';
-import { MEAL_LABELS } from '../../types';
+import { FOOD_SOURCE_LABELS, MEAL_LABELS } from '../../types';
 import { SEED_FOODS } from '../../data/seedFoods';
 import { useAppStore } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast';
@@ -9,11 +9,25 @@ import { FoodForm } from '../foods/FoodForm';
 import type { FoodFormValues } from '../foods/FoodForm';
 import { createId } from '../../lib/id';
 import { formatDecimal, formatNumber } from '../../lib/format';
-import { rankFoods } from '../../lib/search';
+import { normalizeText, rankFoods } from '../../lib/search';
 import { scaleNutrients } from '../../lib/nutrition';
-import { IconChevronLeft, IconMinus, IconPlus, IconSearch } from '../../components/icons';
+import { recipeToFood } from '../../lib/recipes';
+import {
+  isRemoteSource,
+  lookupBarcode,
+  searchRemoteFoods
+} from '../../lib/remote';
+import type { RemoteSource } from '../../lib/remote';
+import { BarcodeScanner } from './BarcodeScanner';
+import {
+  IconBarcode,
+  IconChevronLeft,
+  IconMinus,
+  IconPlus,
+  IconSearch
+} from '../../components/icons';
 
-type Mode = 'search' | 'portion' | 'quick' | 'custom';
+type Mode = 'search' | 'portion' | 'quick' | 'custom' | 'barcode';
 
 type AddFoodSheetProps = {
   open: boolean;
@@ -28,13 +42,28 @@ function preview(nutrients: Nutrients, quantity: number): Nutrients {
   return scaleNutrients(nutrients, quantity);
 }
 
+function foodKey(food: Food): string {
+  return food.barcode
+    ? `barcode:${food.barcode}`
+    : `name:${normalizeText(`${food.name} ${food.brand ?? ''}`)}`;
+}
+
+function SourceBadge({ food }: { food: Food }) {
+  const label = FOOD_SOURCE_LABELS[food.source];
+  if (!label) return null;
+  return <span className="badge">{label}</span>;
+}
+
 export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
   const customFoods = useAppStore((state) => state.customFoods);
+  const remoteFoods = useAppStore((state) => state.remoteFoods);
+  const recipes = useAppStore((state) => state.recipes);
   const favorites = useAppStore((state) => state.favorites);
   const recentFoodIds = useAppStore((state) => state.recentFoodIds);
   const logFood = useAppStore((state) => state.logFood);
   const quickAdd = useAppStore((state) => state.quickAdd);
   const addCustomFood = useAppStore((state) => state.addCustomFood);
+  const cacheRemoteFood = useAppStore((state) => state.cacheRemoteFood);
   const toast = useToast();
 
   const [mode, setMode] = useState<Mode>('search');
@@ -47,9 +76,20 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
   const [quickCarbs, setQuickCarbs] = useState('');
   const [quickFat, setQuickFat] = useState('');
   const [error, setError] = useState('');
+  const [onlineFoods, setOnlineFoods] = useState<Food[]>([]);
+  const [onlineSources, setOnlineSources] = useState<RemoteSource[]>([]);
+  const [onlineStatus, setOnlineStatus] = useState<'idle' | 'loading' | 'done' | 'error'>(
+    'idle'
+  );
+  const [onlineError, setOnlineError] = useState('');
+  const [onlineAttempt, setOnlineAttempt] = useState(0);
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
+  const [barcodeError, setBarcodeError] = useState('');
+  const barcodeAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    barcodeAbortRef.current?.abort();
     setMode('search');
     setQuery('');
     setSelected(null);
@@ -60,9 +100,19 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
     setQuickCarbs('');
     setQuickFat('');
     setError('');
+    setOnlineFoods([]);
+    setOnlineSources([]);
+    setOnlineStatus('idle');
+    setOnlineError('');
+    setBarcodeBusy(false);
+    setBarcodeError('');
   }, [open]);
 
-  const allFoods = useMemo(() => [...customFoods, ...SEED_FOODS], [customFoods]);
+  const recipeFoods = useMemo(() => recipes.map(recipeToFood), [recipes]);
+  const allFoods = useMemo(
+    () => [...recipeFoods, ...customFoods, ...remoteFoods, ...SEED_FOODS],
+    [customFoods, recipeFoods, remoteFoods]
+  );
   const foodsById = useMemo(() => new Map(allFoods.map((food) => [food.id, food])), [allFoods]);
   const results = useMemo(
     () => rankFoods(allFoods, query, favorites, recentFoodIds),
@@ -77,13 +127,70 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
     [foodsById, recentFoodIds]
   );
 
+  const trimmedQuery = query.trim();
+
+  useEffect(() => {
+    if (!open || mode !== 'search' || trimmedQuery.length < 2) {
+      setOnlineFoods([]);
+      setOnlineSources([]);
+      setOnlineStatus('idle');
+      setOnlineError('');
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setOnlineStatus('loading');
+      setOnlineError('');
+      searchRemoteFoods(trimmedQuery, controller.signal)
+        .then((response) => {
+          if (controller.signal.aborted) return;
+          setOnlineFoods(response.foods);
+          setOnlineSources(response.sources);
+          setOnlineStatus('done');
+        })
+        .catch((searchError: unknown) => {
+          if (controller.signal.aborted) return;
+          setOnlineStatus('error');
+          setOnlineError(
+            searchError instanceof Error
+              ? searchError.message
+              : 'Online search is unavailable.'
+          );
+        });
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [open, mode, trimmedQuery, onlineAttempt]);
+
+  const onlineVisible = useMemo(() => {
+    const localKeys = new Set(results.map(foodKey));
+    const tokens = normalizeText(trimmedQuery).split(/\s+/).filter(Boolean);
+    return onlineFoods.filter((food) => {
+      if (localKeys.has(foodKey(food))) return false;
+      const haystack = normalizeText(`${food.name} ${food.brand ?? ''}`);
+      return tokens.every((token) => haystack.includes(token));
+    });
+  }, [onlineFoods, results, trimmedQuery]);
+
   const quantityValue = Number(quantity);
   const validQuantity = Number.isFinite(quantityValue) && quantityValue > 0 && quantityValue <= 100;
   const portionNutrients = selected && validQuantity ? preview(selected.nutrients, quantityValue) : null;
 
-  const title = mode === 'quick' ? 'Quick add' : mode === 'custom' ? 'New food' : `Add to ${MEAL_LABELS[meal]}`;
+  const title =
+    mode === 'quick'
+      ? 'Quick add'
+      : mode === 'custom'
+        ? 'New food'
+        : mode === 'barcode'
+          ? 'Scan barcode'
+          : `Add to ${MEAL_LABELS[meal]}`;
 
   function chooseFood(food: Food) {
+    if (isRemoteSource(food.source)) cacheRemoteFood(food);
     setSelected(food);
     setQuantity('1');
     setError('');
@@ -163,36 +270,82 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
   }
 
   function backToSearch() {
+    barcodeAbortRef.current?.abort();
     setMode('search');
     setSelected(null);
     setError('');
+    setBarcodeBusy(false);
+    setBarcodeError('');
+  }
+
+  async function handleBarcode(code: string) {
+    barcodeAbortRef.current?.abort();
+    const controller = new AbortController();
+    barcodeAbortRef.current = controller;
+    setBarcodeBusy(true);
+    setBarcodeError('');
+
+    try {
+      const food = await lookupBarcode(code, controller.signal);
+      if (controller.signal.aborted) return;
+      if (!food) {
+        setBarcodeError(`No match for ${code}. Try search or create a custom food.`);
+        return;
+      }
+      toast(`Found ${food.name}`);
+      chooseFood(food);
+    } catch (lookupError) {
+      if (controller.signal.aborted) return;
+      setBarcodeError(
+        lookupError instanceof Error ? lookupError.message : 'Barcode lookup failed.'
+      );
+    } finally {
+      if (!controller.signal.aborted) setBarcodeBusy(false);
+    }
   }
 
   return (
     <Sheet
       open={open}
       title={title}
-      subtitle={selected && mode === 'portion' ? `${selected.servingLabel} · ${formatNumber(selected.nutrients.kcal)} kcal` : undefined}
+      subtitle={
+        selected && mode === 'portion'
+          ? `${selected.brand ? `${selected.brand} · ` : ''}${selected.servingLabel} · ${formatNumber(selected.nutrients.kcal)} kcal`
+          : undefined
+      }
       onClose={onClose}
     >
       {mode === 'search' ? (
         <>
-          <label className="search-field">
-            <IconSearch size={18} />
-            <span className="visually-hidden">Search foods</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search foods…"
-              autoComplete="off"
-              autoFocus
-            />
-          </label>
+          <div className="search-row">
+            <label className="search-field">
+              <IconSearch size={18} />
+              <span className="visually-hidden">Search foods</span>
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search foods…"
+                autoComplete="off"
+                autoFocus
+              />
+            </label>
+            <button
+              type="button"
+              className="icon-button scan-button"
+              aria-label="Scan barcode"
+              onClick={() => {
+                setBarcodeError('');
+                setMode('barcode');
+              }}
+            >
+              <IconBarcode size={20} />
+            </button>
+          </div>
 
           {recentFoodsSection()}
 
           <div className="list-heading">
-            <span>{query ? 'Results' : 'Common foods'}</span>
+            <span>{query ? 'Saved foods' : 'Common foods'}</span>
             <span>{results.length}</span>
           </div>
 
@@ -203,9 +356,10 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
                   <span className="food-row-main">
                     <span className="food-name">
                       {food.name}
-                      {food.source === 'custom' ? <span className="badge">custom</span> : null}
+                      <SourceBadge food={food} />
                     </span>
                     <span className="food-meta">
+                      {food.brand ? `${food.brand} · ` : ''}
                       {food.servingLabel} · {formatNumber(food.nutrients.kcal)} kcal
                     </span>
                   </span>
@@ -215,10 +369,91 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
             ))}
             {results.length === 0 ? (
               <li className="empty-note">
-                No foods match “{query}”. Create a custom food to add it.
+                No local foods match “{query}”. Online results can still appear below.
               </li>
             ) : null}
           </ul>
+
+          {trimmedQuery.length >= 2 ? (
+            <section className="online-results" aria-label="Online food results">
+              <div className="list-heading">
+                <span>Online</span>
+                <span>
+                  {onlineStatus === 'loading'
+                    ? 'searching'
+                    : onlineStatus === 'done'
+                      ? onlineVisible.length
+                      : ''}
+                </span>
+              </div>
+
+              {onlineStatus === 'loading' ? (
+                <p className="online-note" role="status">
+                  Searching Open Food Facts…
+                </p>
+              ) : null}
+
+              {onlineStatus === 'error' ? (
+                <div className="online-error" role="status">
+                  <p>{onlineError} Local foods still work offline.</p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={() => setOnlineAttempt((attempt) => attempt + 1)}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : null}
+
+              {onlineStatus === 'done' ? (
+                onlineVisible.length > 0 ? (
+                  <ul className="food-list">
+                    {onlineVisible.map((food) => (
+                      <li key={food.id}>
+                        <button
+                          type="button"
+                          className="food-row"
+                          onClick={() => chooseFood(food)}
+                        >
+                          <span className="food-row-main">
+                            <span className="food-name">
+                              {food.name}
+                              <SourceBadge food={food} />
+                            </span>
+                            <span className="food-meta">
+                              {food.brand ? `${food.brand} · ` : ''}
+                              {food.servingLabel} · {formatNumber(food.nutrients.kcal)} kcal
+                            </span>
+                          </span>
+                          <IconPlus size={17} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="empty-note">
+                    No online matches. Try a shorter search or create a custom food.
+                  </p>
+                )
+              ) : null}
+
+              {onlineSources.includes('off') ? (
+                <p className="fine-print">
+                  Online results from{' '}
+                  <a
+                    className="text-link"
+                    href="https://world.openfoodfacts.org"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open Food Facts
+                  </a>{' '}
+                  (ODbL). Values are estimates; check the label.
+                </p>
+              ) : null}
+            </section>
+          ) : null}
 
           <div className="sheet-actions">
             <button type="button" className="btn btn-ghost" onClick={() => setMode('quick')}>
@@ -229,8 +464,23 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
             </button>
           </div>
           <p className="fine-print">
-            Barcode scanning, photo logging, and reminders are planned for v0.2 and v0.3.
+            Search is optional and needs a connection. Your diary, recipes, and saved foods
+            stay available offline.
           </p>
+        </>
+      ) : null}
+
+      {mode === 'barcode' ? (
+        <>
+          <button type="button" className="back-link" onClick={backToSearch}>
+            <IconChevronLeft size={16} /> Back to search
+          </button>
+          <BarcodeScanner busy={barcodeBusy} onDetected={handleBarcode} />
+          {barcodeError ? (
+            <p className="field-error" role="alert">
+              {barcodeError}
+            </p>
+          ) : null}
         </>
       ) : null}
 
@@ -242,8 +492,13 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
 
           <div className="portion-head">
             <div>
-              <h3>{selected.name}</h3>
-              <p>{selected.servingLabel}</p>
+              <h3>
+                {selected.name} <SourceBadge food={selected} />
+              </h3>
+              <p>
+                {selected.brand ? `${selected.brand} · ` : ''}
+                {selected.servingLabel}
+              </p>
             </div>
           </div>
 
@@ -425,9 +680,12 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
             <li key={food.id}>
               <button type="button" className="food-row" onClick={() => chooseFood(food)}>
                 <span className="food-row-main">
-                  <span className="food-name">{food.name}</span>
+                  <span className="food-name">
+                    {food.name}
+                    <SourceBadge food={food} />
+                  </span>
                   <span className="food-meta">
-                    {formatDecimal(Number(quantity) || 1)}× · {formatNumber(food.nutrients.kcal)} kcal
+                    {formatDecimal(1)}× · {formatNumber(food.nutrients.kcal)} kcal
                   </span>
                 </span>
                 <IconPlus size={17} />

@@ -178,3 +178,54 @@ export function IconCheck(props: IconProps) {
     </Icon>
   );
 }
+
+export function IconCamera(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 8h3l1.5-2h7L17 8h3v11H4Z" />
+      <circle cx="12" cy="13" r="3.2" />
+    </Icon>
+  );
+}
+
+export function IconBarcode(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 5v14M8 5v14M11 5v9M15 5v14M19 5v14M20 9v6" />
+    </Icon>
+  );
+}
+
+export function IconWater(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11Z" />
+    </Icon>
+  );
+}
+
+export function IconScale(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="4" />
+      <path d="M8 12a4 4 0 0 1 8 0M12 12l2-2" />
+    </Icon>
+  );
+}
+
+export function IconBell(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6ZM10 19a2 2 0 0 0 4 0" />
+    </Icon>
+  );
+}
+
+export function IconBook(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3Z" />
+      <path d="M5 17a3 3 0 0 1 3-3h11M9 7h6" />
+    </Icon>
+  );
+}

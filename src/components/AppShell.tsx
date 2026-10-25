@@ -8,7 +8,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="frame">
       <header className="topbar">
         <Brand as="link" />
-        <span className="alpha-pill">alpha 0.1.1</span>
+        <span className="alpha-pill">alpha 0.2.0</span>
       </header>
       <main className="main">
         <StorageWarning />

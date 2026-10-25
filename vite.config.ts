@@ -8,6 +8,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
       manifest: {
         name: 'CalAI — Calorie tracker',
@@ -31,15 +34,13 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        navigateFallback: '/CalAI/index.html',
-        cleanupOutdatedCaches: true
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}']
       }
     })
   ],
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts']
+    include: ['src/**/*.test.ts', 'worker/**/*.test.ts']
   }
 });

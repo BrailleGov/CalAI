@@ -16,7 +16,9 @@ export type Nutrients = {
   fat: number;
 };
 
-export type FoodSource = 'seed' | 'custom' | 'off' | 'usda';
+export const SCHEMA_VERSION = 2 as const;
+
+export type FoodSource = 'seed' | 'custom' | 'off' | 'usda' | 'recipe';
 
 export type Food = {
   id: string;
@@ -72,23 +74,74 @@ export type Units = 'metric' | 'imperial';
 export type Settings = {
   theme: ThemeSetting;
   units: Units;
+  waterGoalMl: number;
+};
+
+export type RecipeIngredient = {
+  foodId?: string;
+  name: string;
+  servingLabel: string;
+  quantity: number;
+  nutrients: Nutrients;
+};
+
+export type Recipe = {
+  id: string;
+  name: string;
+  servings: number;
+  ingredients: RecipeIngredient[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type WeightEntry = {
+  id: string;
+  date: string;
+  kg: number;
+  createdAt: number;
+};
+
+export type WaterEntry = {
+  id: string;
+  date: string;
+  ml: number;
+  createdAt: number;
+};
+
+export type Reminder = {
+  id: string;
+  meal: Meal;
+  time: string;
+  enabled: boolean;
+};
+
+export type ReminderSettings = {
+  enabled: boolean;
+  quietStart: string;
+  quietEnd: string;
+  items: Reminder[];
 };
 
 export type PersistedData = {
-  schemaVersion: 1;
+  schemaVersion: typeof SCHEMA_VERSION;
   onboarded: boolean;
   profile: Profile | null;
   targets: Targets;
   customFoods: Food[];
+  remoteFoods: Food[];
   entries: Entry[];
   favorites: string[];
   recentFoodIds: string[];
+  recipes: Recipe[];
+  weights: WeightEntry[];
+  water: WaterEntry[];
+  reminders: ReminderSettings;
   settings: Settings;
 };
 
 export type BackupFile = {
   app: 'calai';
-  schemaVersion: 1;
+  schemaVersion: typeof SCHEMA_VERSION;
   exportedAt: string;
   data: PersistedData;
 };
@@ -119,4 +172,26 @@ export const SEX_LABELS: Record<Sex, string> = {
   female: 'Female',
   male: 'Male',
   unspecified: 'Prefer not to say'
+};
+
+export const FOOD_SOURCE_LABELS: Record<FoodSource, string> = {
+  seed: '',
+  custom: 'custom',
+  off: 'Open Food Facts',
+  usda: 'USDA',
+  recipe: 'recipe'
+};
+
+export const DEFAULT_REMINDERS: Reminder[] = [
+  { id: 'breakfast', meal: 'breakfast', time: '08:00', enabled: false },
+  { id: 'lunch', meal: 'lunch', time: '12:30', enabled: false },
+  { id: 'dinner', meal: 'dinner', time: '18:30', enabled: false },
+  { id: 'snack', meal: 'snack', time: '15:30', enabled: false }
+];
+
+export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
+  enabled: false,
+  quietStart: '21:00',
+  quietEnd: '07:00',
+  items: DEFAULT_REMINDERS
 };

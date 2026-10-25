@@ -3,7 +3,7 @@ import type { PersistedData } from '../types';
 import { buildBackup, parseBackup, validatePersistedData } from './backup';
 
 const data: PersistedData = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   onboarded: true,
   profile: {
     sex: 'female',
@@ -15,6 +15,7 @@ const data: PersistedData = {
     rateKgPerWeek: 0
   },
   targets: { kcal: 1900, protein: 100, carbs: 200, fat: 63 },
+  remoteFoods: [],
   customFoods: [
     {
       id: 'food-1',
@@ -40,7 +41,21 @@ const data: PersistedData = {
   ],
   favorites: ['food-1'],
   recentFoodIds: ['food-1'],
-  settings: { theme: 'system', units: 'metric' }
+  recipes: [],
+  weights: [],
+  water: [],
+  reminders: {
+    enabled: false,
+    quietStart: '21:00',
+    quietEnd: '07:00',
+    items: [
+      { id: 'breakfast', meal: 'breakfast', time: '08:00', enabled: false },
+      { id: 'lunch', meal: 'lunch', time: '12:30', enabled: false },
+      { id: 'dinner', meal: 'dinner', time: '18:30', enabled: false },
+      { id: 'snack', meal: 'snack', time: '15:30', enabled: false }
+    ]
+  },
+  settings: { theme: 'system', units: 'metric', waterGoalMl: 2000 }
 };
 
 describe('backup', () => {
@@ -83,7 +98,29 @@ describe('backup', () => {
   });
 
   it('rejects a future schema version', () => {
-    const result = validatePersistedData({ ...data, schemaVersion: 2 });
+    const result = validatePersistedData({ ...data, schemaVersion: 99 });
     expect(result.ok).toBe(false);
+  });
+
+  it('migrates a v0.1 backup to the current schema', () => {
+    const v1 = {
+      ...data,
+      schemaVersion: 1,
+      settings: { theme: 'dark', units: 'imperial' }
+    };
+    delete (v1 as Record<string, unknown>).remoteFoods;
+    delete (v1 as Record<string, unknown>).recipes;
+    delete (v1 as Record<string, unknown>).weights;
+    delete (v1 as Record<string, unknown>).water;
+    delete (v1 as Record<string, unknown>).reminders;
+
+    const result = validatePersistedData(v1);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.schemaVersion).toBe(2);
+      expect(result.data.settings.waterGoalMl).toBe(2000);
+      expect(result.data.reminders.items).toHaveLength(4);
+      expect(result.data.entries).toHaveLength(1);
+    }
   });
 });

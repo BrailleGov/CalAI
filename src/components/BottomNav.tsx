@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
-import { IconChart, IconSearch, IconSettings, IconToday } from './icons';
+import { IconBook, IconChart, IconSearch, IconSettings, IconToday } from './icons';
 
 const ITEMS = [
   { to: '/today', label: 'Today', Icon: IconToday },
   { to: '/foods', label: 'Foods', Icon: IconSearch },
+  { to: '/recipes', label: 'Recipes', Icon: IconBook },
   { to: '/history', label: 'History', Icon: IconChart },
   { to: '/settings', label: 'Settings', Icon: IconSettings }
 ] as const;

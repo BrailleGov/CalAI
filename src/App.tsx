@@ -6,6 +6,7 @@ import { AppShell } from './components/AppShell';
 import { Onboarding } from './features/onboarding/Onboarding';
 import { TodayPage } from './features/today/TodayPage';
 import { FoodsPage } from './features/foods/FoodsPage';
+import { RecipesPage } from './features/recipes/RecipesPage';
 import { HistoryPage } from './features/history/HistoryPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { needsLegacyCheck, readLegacyState } from './lib/legacy';
@@ -81,6 +82,7 @@ function Root() {
         <Route path="/today" element={<TodayPage />} />
         <Route path="/day/:date" element={<TodayPage />} />
         <Route path="/foods" element={<FoodsPage />} />
+        <Route path="/recipes" element={<RecipesPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/today" replace />} />

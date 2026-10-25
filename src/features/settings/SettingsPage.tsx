@@ -1,17 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import type { PersistedData } from '../../types';
-import { ACTIVITY_LABELS, GOAL_LABELS } from '../../types';
+import { SCHEMA_VERSION } from '../../types';
+import type { PersistedData, Reminder, ReminderSettings } from '../../types';
+import { ACTIVITY_LABELS, GOAL_LABELS, MEAL_LABELS } from '../../types';
 import { useAppStore, resetPersistedState } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast';
 import { buildBackup, parseBackup } from '../../lib/backup';
 import { formatHeight, formatWeight } from '../../lib/format';
 import { todayKey } from '../../lib/dates';
+import { buildReminderIcs } from '../../lib/reminders';
 import {
+  hasPushSubscription,
+  pushConfigured,
+  pushSupported,
+  subscribeToPush,
+  syncPushReminders,
+  unsubscribeFromPush
+} from '../../lib/push';
+import {
+  IconBell,
   IconDownload,
   IconSparkles,
   IconTrash,
-  IconUpload
+  IconUpload,
+  IconWater
 } from '../../components/icons';
 
 type TargetErrors = Record<string, string>;
@@ -23,6 +35,8 @@ export function SettingsPage() {
   const updateTargets = useAppStore((state) => state.updateTargets);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const importData = useAppStore((state) => state.importData);
+  const reminders = useAppStore((state) => state.reminders);
+  const updateReminders = useAppStore((state) => state.updateReminders);
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +46,10 @@ export function SettingsPage() {
   const [fat, setFat] = useState(String(targets.fat));
   const [errors, setErrors] = useState<TargetErrors>({});
   const [confirmReset, setConfirmReset] = useState(false);
+  const [waterGoal, setWaterGoal] = useState(String(settings.waterGoalMl));
+  const [waterError, setWaterError] = useState('');
+  const [pushState, setPushState] = useState<'unknown' | 'subscribed' | 'off'>('unknown');
+  const [pushBusy, setPushBusy] = useState(false);
 
   useEffect(() => {
     setKcal(String(targets.kcal));
@@ -39,6 +57,21 @@ export function SettingsPage() {
     setCarbs(String(targets.carbs));
     setFat(String(targets.fat));
   }, [targets]);
+
+  useEffect(() => {
+    setWaterGoal(String(settings.waterGoalMl));
+  }, [settings.waterGoalMl]);
+
+  useEffect(() => {
+    if (!pushConfigured || !pushSupported()) return;
+    let cancelled = false;
+    void hasPushSubscription().then((subscribed) => {
+      if (!cancelled) setPushState(subscribed ? 'subscribed' : 'off');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleSaveTargets() {
     const nextErrors: TargetErrors = {};
@@ -72,17 +105,99 @@ export function SettingsPage() {
     toast('Targets saved');
   }
 
+  function handleSaveWaterGoal() {
+    const value = Number(waterGoal);
+    if (!Number.isFinite(value) || value < 250 || value > 10000) {
+      setWaterError('Use a goal between 250 and 10,000 ml.');
+      return;
+    }
+    setWaterError('');
+    updateSettings({ waterGoalMl: Math.round(value) });
+    toast('Water goal saved');
+  }
+
+  function applyReminderPatch(patch: Partial<ReminderSettings>) {
+    const next = { ...reminders, ...patch };
+    updateReminders(patch);
+    if (pushState === 'subscribed') {
+      void syncPushReminders(next).catch(() => undefined);
+    }
+  }
+
+  function updateReminderItem(id: string, patch: Partial<Reminder>) {
+    applyReminderPatch({
+      items: reminders.items.map((item) =>
+        item.id === id ? { ...item, ...patch } : item
+      )
+    });
+  }
+
+  function handleDownloadIcs() {
+    const ics = buildReminderIcs(reminders.items);
+    if (!ics) {
+      toast('Turn on at least one reminder first.');
+      return;
+    }
+
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'calai-reminders.ics';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast('Calendar file downloaded');
+  }
+
+  async function handleEnablePush() {
+    if (!reminders.enabled || !reminders.items.some((item) => item.enabled)) {
+      toast('Turn on at least one reminder first.');
+      return;
+    }
+
+    setPushBusy(true);
+    try {
+      await subscribeToPush(reminders);
+      setPushState('subscribed');
+      toast('Device notifications enabled');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Could not enable notifications.');
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function handleDisablePush() {
+    setPushBusy(true);
+    try {
+      await unsubscribeFromPush();
+      setPushState('off');
+      toast('Device notifications turned off');
+    } catch {
+      toast('Could not turn off device notifications.');
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
   function handleExport() {
     const state = useAppStore.getState();
     const data: PersistedData = {
-      schemaVersion: 1,
+      schemaVersion: SCHEMA_VERSION,
       onboarded: state.onboarded,
       profile: state.profile,
       targets: state.targets,
       customFoods: state.customFoods,
+      remoteFoods: state.remoteFoods,
       entries: state.entries,
       favorites: state.favorites,
       recentFoodIds: state.recentFoodIds,
+      recipes: state.recipes,
+      weights: state.weights,
+      water: state.water,
+      reminders: state.reminders,
       settings: state.settings
     };
     const backup = buildBackup(data);
@@ -201,6 +316,171 @@ export function SettingsPage() {
           <button type="button" className="btn btn-primary btn-block" onClick={handleSaveTargets}>
             Save targets
           </button>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="water-heading">
+        <div className="card-head card-head-flush">
+          <h2 id="water-heading">
+            <IconWater size={16} /> Water goal
+          </h2>
+          <span className="card-note">For the quick-add bar</span>
+        </div>
+        <div className="card">
+          <label className="field">
+            <span className="field-label">Daily water goal</span>
+            <span className="unit-input">
+              <input
+                value={waterGoal}
+                onChange={(event) => {
+                  setWaterGoal(event.target.value);
+                  setWaterError('');
+                }}
+                inputMode="numeric"
+                aria-invalid={Boolean(waterError)}
+              />
+              <span className="unit">ml</span>
+            </span>
+            {waterError ? (
+              <span className="field-error" role="alert">
+                {waterError}
+              </span>
+            ) : null}
+          </label>
+          <button
+            type="button"
+            className="btn btn-primary btn-block"
+            onClick={handleSaveWaterGoal}
+          >
+            Save water goal
+          </button>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="reminders-heading">
+        <div className="card-head card-head-flush">
+          <h2 id="reminders-heading">
+            <IconBell size={16} /> Reminders
+          </h2>
+          <span className="card-note">{reminders.enabled ? 'On' : 'Off'}</span>
+        </div>
+        <div className="card settings-card">
+          <div className="settings-row">
+            <span className="settings-label">In-app reminders</span>
+            <label className="check-label">
+              <input
+                type="checkbox"
+                aria-label="In-app reminders"
+                checked={reminders.enabled}
+                onChange={() => applyReminderPatch({ enabled: !reminders.enabled })}
+              />
+              <span>{reminders.enabled ? 'On' : 'Off'}</span>
+            </label>
+          </div>
+
+          {reminders.enabled ? (
+            <div className="reminder-settings">
+              <p className="fine-print">
+                While CalAI is open, a quiet banner appears during the 90 minutes after
+                each enabled time. Quiet hours suppress the banner.
+              </p>
+
+              <ul className="reminder-list">
+                {reminders.items.map((item) => (
+                  <li key={item.id}>
+                    <label className="check-label">
+                      <input
+                        type="checkbox"
+                        checked={item.enabled}
+                        onChange={() =>
+                          updateReminderItem(item.id, { enabled: !item.enabled })
+                        }
+                      />
+                      <span>{MEAL_LABELS[item.meal]}</span>
+                    </label>
+                    <label className="reminder-time">
+                      <span className="visually-hidden">
+                        {MEAL_LABELS[item.meal]} reminder time
+                      </span>
+                      <input
+                        type="time"
+                        value={item.time}
+                        onChange={(event) =>
+                          updateReminderItem(item.id, { time: event.target.value })
+                        }
+                      />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="field-row">
+                <label className="field">
+                  <span className="field-label">Quiet from</span>
+                  <input
+                    type="time"
+                    value={reminders.quietStart}
+                    onChange={(event) =>
+                      applyReminderPatch({ quietStart: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Quiet until</span>
+                  <input
+                    type="time"
+                    value={reminders.quietEnd}
+                    onChange={(event) =>
+                      applyReminderPatch({ quietEnd: event.target.value })
+                    }
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-ghost btn-block"
+                onClick={handleDownloadIcs}
+              >
+                <IconDownload size={16} /> Download calendar (.ics)
+              </button>
+
+              {pushConfigured && pushSupported() ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-block"
+                  onClick={
+                    pushState === 'subscribed' ? handleDisablePush : handleEnablePush
+                  }
+                  disabled={pushBusy}
+                >
+                  <IconBell size={16} />{' '}
+                  {pushBusy
+                    ? 'Working…'
+                    : pushState === 'subscribed'
+                      ? 'Turn off device notifications'
+                      : 'Enable device notifications'}
+                </button>
+              ) : (
+                <p className="fine-print">
+                  Push notifications are not configured in this build. Deploy the Cloudflare
+                  Worker and set <code>VITE_API_BASE</code> and{' '}
+                  <code>VITE_VAPID_PUBLIC_KEY</code> to turn them on. The in-app banner and
+                  calendar file work without a server.
+                </p>
+              )}
+
+              <p className="fine-print">
+                A calendar reminder works even when CalAI is closed. Push notifications are
+                best on an installed PWA; iOS requires 16.4 or newer and explicit permission.
+              </p>
+            </div>
+          ) : (
+            <p className="fine-print reminder-off-note">
+              Off by default. Turn reminders on to pick times and download a calendar file.
+              Nothing is sent anywhere.
+            </p>
+          )}
         </div>
       </section>
 
@@ -356,7 +636,7 @@ export function SettingsPage() {
       <section className="settings-section" aria-labelledby="about-heading">
         <div className="card-head card-head-flush">
           <h2 id="about-heading">About</h2>
-          <span className="card-note">v0.1.1 alpha</span>
+          <span className="card-note">v0.2.0 alpha</span>
         </div>
         <div className="card about-card">
           <p>
@@ -364,8 +644,13 @@ export function SettingsPage() {
             you eat.
           </p>
           <p className="about-planned">
-            <IconSparkles size={16} /> Planned: barcode scanning, food database, reminders,
-            photo and text logging, and a chat that answers questions about your own data.
+            <IconSparkles size={16} /> New in v0.2: online food search, barcode lookup,
+            recipes, weight, water, and reminders. Planned next: photo and text logging,
+            and a chat that answers questions about your own data.
+          </p>
+          <p className="about-meta">
+            Online food data: openfoodfacts.org (ODbL) and USDA FoodData Central (public
+            domain). Values are estimates.
           </p>
           <a
             className="text-link"

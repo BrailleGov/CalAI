@@ -47,6 +47,25 @@ test.describe('accessibility', () => {
     await expectNoViolations(page, 'settings dark');
   });
 
+  test('recipes, reminders, and barcode screens have no A/AA violations', async ({ page }) => {
+    await completeOnboarding(page);
+
+    await page.getByRole('link', { name: 'Recipes', exact: true }).click();
+    await expectNoViolations(page, 'recipes empty dark');
+    await page.getByRole('button', { name: 'New recipe' }).click();
+    await expectNoViolations(page, 'recipe form dark');
+    await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+
+    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await page.getByRole('checkbox', { name: 'In-app reminders' }).check();
+    await expectNoViolations(page, 'reminders on dark');
+
+    await page.getByRole('link', { name: 'Today', exact: true }).click();
+    await page.getByRole('button', { name: 'Add food to Breakfast' }).click();
+    await page.getByRole('button', { name: 'Scan barcode' }).click();
+    await expectNoViolations(page, 'barcode screen dark');
+  });
+
   test('light theme and open sheets have no A/AA violations', async ({ page }) => {
     await completeOnboarding(page);
     await page.getByRole('link', { name: 'Settings' }).click();

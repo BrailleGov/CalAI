@@ -1,6 +1,6 @@
 # CalAI — product plan
 
-Status: **v0.1.1 is live (alpha).** v0.2+ are planned and await a separate go.
+Status: **v0.2.0 is shipped (alpha).** v0.3 is planned and awaits a separate go.
 
 Last updated: 2026-10-24
 Live: <https://braillegov.github.io/CalAI/>
@@ -35,13 +35,13 @@ and how CalAI covers it.
 | History and trends | Yes | 7 / 30-day log with daily totals | **v0.1** |
 | Offline / installable | Partial | Full offline diary + PWA install | **v0.1** |
 | Export / import | Paid often | JSON export, validated import | **v0.1** |
-| Favorites and recents | Yes | One-tap re-log, sorted by use | v0.2 |
-| Remote food database | Yes | Open Food Facts + USDA FoodData Central via proxy | v0.2 |
-| Barcode scanning | Yes | BarcodeDetector + ZXing fallback | v0.2 |
-| Recipes and multi-ingredient meals | Yes | Recipe builder with servings | v0.2 |
-| Weight logging | Yes | Weight + trend line, 7-day average | v0.2 |
-| Reminders | Yes (push) | Local/in-app first, then Web Push via Worker | v0.2 |
-| Water and exercise | Yes | Water quick add; manual exercise kept out of the budget | v0.2 |
+| Favorites and recents | Yes | One-tap re-log, sorted by use | **v0.2** |
+| Remote food database | Yes | Open Food Facts live; USDA + KV caching via Worker | **v0.2** |
+| Barcode scanning | Yes | BarcodeDetector + lazy ZXing + manual entry | **v0.2** |
+| Recipes and multi-ingredient meals | Yes | Recipe builder with servings | **v0.2** |
+| Weight logging | Yes | Weight + trend line, 7-day average | **v0.2** |
+| Reminders | Yes (push) | In-app + `.ics` live; Web Push code ready behind config | **v0.2** |
+| Water and exercise | Yes | Water quick add live; exercise still out of the budget | **v0.2** |
 | Photo food recognition | Common in AI apps | Camera/upload → candidates → confirm | v0.3 |
 | Natural-language logging | Emerging | "Two eggs and toast" → draft entries → confirm | v0.3 |
 | LLM chat about your data | Emerging | Read-only Q&A over aggregates; write actions confirm | v0.3 |
@@ -92,16 +92,60 @@ intentionally 60 while the alpha carries `noindex`). v0.1.1 adds storage recover
 blocked IndexedDB, blocked localStorage, corrupt state, and migration of a seeded v0.1.0
 IndexedDB diary. Unit tests: 27.
 
-### v0.2 — Faster logging (planned)
+### v0.2 — Faster logging (shipped as v0.2.0)
 
-- Remote food search (Open Food Facts + USDA) behind a Cloudflare Worker with caching.
-- Barcode scanning with camera permission flow and manual barcode fallback.
-- Favorites, recents, copy yesterday, copy meal.
-- Recipes: combine foods, set servings, log a portion.
-- Weight log with 7-day average and a compact chart.
-- Water quick add; manual exercise displayed separately, not added to the calorie budget.
-- Reminders: in-app + `.ics` first, then Web Push (VAPID, Worker cron) for installed PWAs.
-- Worker sessions and per-device quotas; no accounts.
+Goal: remove typing and make repeated meals one tap, without giving up local-first storage.
+
+Shipped:
+
+- **Remote food search.** Open Food Facts works from the static app through its CORS API.
+  `worker/` adds a Cloudflare Worker proxy with a 7-day KV cache, per-IP daily caps, and
+  optional USDA FoodData Central results when `USDA_API_KEY` is configured. Results are
+  normalised to 100 g, deduped by barcode/name, filtered to query-matching names, and shown
+  with source attribution. Logged remote foods are cached locally (100-item cap) so they
+  work offline afterwards.
+- **Barcode scanning.** `BarcodeDetector` when available; `@zxing/browser` loaded as a
+  separate chunk only as a fallback; manual 8–14 digit entry always available. Camera
+  frames stay on the device.
+- **Recipes.** Build from seed/custom/remote foods, set batch servings, edit/delete, log a
+  portion to any meal; entries snapshot per-serving nutrition.
+- **Weight and water.** Weight upsert per day, latest value, 7-day average, SVG trend line,
+  and delete-with-confirmation. Water quick add (+250/+500 ml or +8/+16 oz), adjustable goal,
+  progress bar, and undo. Exercise remains out of the calorie budget.
+- **Reminders.** Off by default. Per-meal times, quiet hours, an in-app banner during a
+  90-minute window, and a daily `.ics` download. Web Push client + Worker subscribe/cron
+  handlers are implemented but inactive until `VITE_API_BASE` and VAPID keys are configured.
+- **Storage.** Schema v2 on the same synchronous localStorage document. v0.1/v0.1.1 state and
+  backups migrate automatically; no IndexedDB boot gate was reintroduced.
+- **Testing.** The ad-hoc Playwright scripts are now a committed suite (30 tests) and run in
+  CI before deployment, alongside 46 unit tests.
+
+Not shipped / deliberately deferred:
+
+- Worker deployment, USDA key, and VAPID keys were not configured in this session. The live
+  static app therefore uses direct Open Food Facts and local reminders.
+- Copy yesterday/copy meal, favorites/recents polish beyond the existing behavior, and manual
+  exercise are deferred to v0.2.x or v0.3.
+- Accounts, sync, analytics, and monetisation remain out of scope.
+
+v0.2 acceptance check:
+
+- Logging from online search or barcode works on a 390 px viewport and the food is reusable
+  offline after logging.
+- Recipes produce per-serving values and do not rewrite past entries.
+- Weight/water persist across reloads; reminder banner and `.ics` work with no network.
+- A blocked network, blocked storage, or blocked IndexedDB never prevents the local diary
+  from opening.
+- axe-core reports 0 WCAG 2.1/2.2 A/AA violations on all main screens and open sheets.
+- Committed E2E suite passes in CI; initial JS remains < 200 KB gzip.
+
+Verified locally on 2026-10-24: 46 unit tests and 30 Playwright tests pass; axe-core
+reports 0 WCAG A/AA violations across onboarding, diary, add/edit sheets, foods, recipes,
+history, settings, reminders, and barcode; no horizontal overflow at 360/390 px; initial JS
+87.0 KB gzip plus a 108.7 KB gzip lazy ZXing chunk; PWA precache 751.0 KiB. Live Open Food
+Facts search returned results, and the offline reload test passes with the new injectManifest
+service worker. Lighthouse was not re-run after the v0.2 bundle change, and the Worker/push
+tiers were not deployed.
 
 ### v0.3 — AI logging and chat (planned)
 
@@ -218,13 +262,14 @@ Estimates are solo build days, not calendar promises.
 | M3 | Food library | Seed data, search, custom foods, recents | **done** |
 | M4 | History and settings | Charts, export/import, themes | **done** |
 | M5 | v0.1 QA and deploy | PWA, a11y, device pass, Actions deploy | **done** |
-| M6 | v0.2 data | Worker, OFF/USDA search, barcode, recipes | 6 |
-| M7 | v0.2 retention | Weight, water, reminders, push | 5 |
+| M6 | v0.2 data | Worker, OFF/USDA search, barcode, recipes | **done** |
+| M7 | v0.2 retention | Weight, water, reminders, push code | **done** |
 | M8 | v0.3 AI input | Worker AI proxy, photo + text logging, eval | 7 |
 | M9 | v0.3 chat | Context builder, chat UI, guardrails, recap | 5 |
 | M10 | v1.0 launch | Accounts/sync, legal, audits, migration | 8+ |
 
-v0.1 shipped as M1–M5. Next up is v0.2 (M6–M7), pending a go-ahead.
+v0.1 shipped as M1–M5. v0.2 shipped as M6–M7 with Worker deployment and push credentials still
+pending. Next up is v0.3 (M8–M9), pending a go-ahead.
 
 ## 9. Non-goals
 
@@ -243,7 +288,9 @@ v0.1 shipped as M1–M5. Next up is v0.2 (M6–M7), pending a go-ahead.
 | iOS PWA storage eviction | Lost diary | Request persistent storage; export; clear backups |
 | AI nutrition errors | Wrong totals, trust loss | Confirmation, confidence, editable portions, eval set |
 | AI cost/abuse | Runaway bill | Worker quotas, device tokens, global budget cap |
-| Food DB quality/licensing | Bad data, legal | Show source, cache, ODbL attribution, seed verified foods |
+| Food DB quality/licensing | Bad data, legal | Show source, cache, ODbL/USDA attribution, filter irrelevant results, seed verified foods |
+| Open Food Facts availability/relevance | Search feels empty or wrong | Graceful local fallback, query-token filtering, Worker cache, optional USDA |
+| Worker/VAPID not configured | No cached search, USDA, or push | Direct OFF fallback; `.ics` reminders; documented one-command deploy path |
 | GitHub Pages static limits | No headers, no server | Worker for dynamic; meta CSP; hash routing |
 | Health-data sensitivity | Privacy harm | Local-first, no raw data to AI by default, consent, export/delete |
 | Scope creep | v0.1 stalls | This release gate; everything else is explicitly deferred |
@@ -258,14 +305,27 @@ Settled for v0.1:
 - Local-only data, JSON export/import, no accounts.
 - Deploy via GitHub Actions to Pages.
 
+Settled for v0.2:
+
+- Schema v2 on localStorage; v0.1 state and backups migrate automatically.
+- Remote search works directly against Open Food Facts; the Cloudflare Worker is optional
+  and adds KV caching, USDA, rate caps, and push.
+- BarcodeDetector first, lazy ZXing fallback, manual entry always available.
+- Reminders off by default; in-app + `.ics` are the guaranteed tier; push is opt-in.
+- No accounts, no analytics, no server-side diary.
+
 Pending before their releases:
 
 1. AI provider and monthly budget cap (v0.3).
-2. Cloudflare Workers as the backend for search/AI/push (recommended).
-3. Open Food Facts + USDA keys and attribution page (v0.2).
-4. Accounts and encrypted sync design (v1.0).
-5. Monetisation, if any (post-alpha).
-6. Legal review and public contact address (v1.0).
-7. Design refinement beyond the current utilitarian direction (v0.2).
-v0.1 storage decision: synchronous localStorage, with a bounded one-time IndexedDB recovery
-read. Move the growing diary back to IndexedDB in v0.2 behind a migration.
+2. Deploy the Cloudflare Worker with KV and set `VITE_API_BASE` (v0.2.x).
+3. USDA FoodData Central API key and data-source attribution page (v0.2.x/v1.0).
+4. Generate VAPID keys and test push on installed iOS/Android PWAs (v0.2.x).
+5. Accounts and encrypted sync design (v1.0).
+6. Monetisation, if any (post-alpha).
+7. Legal review and public contact address (v1.0).
+8. Design refinement beyond the current utilitarian direction (v0.2.x).
+
+Storage decision: synchronous localStorage remains in v0.2, now schema v2 (remote-food
+cache capped at 100, recipes, weights, water, reminders). A bounded one-time IndexedDB read
+still recovers v0.1.0 diaries. Revisit granular IndexedDB in v0.3 only if payload size or
+write latency justifies the migration; do not reintroduce an async boot gate.

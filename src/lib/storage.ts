@@ -1,4 +1,5 @@
 import type { PersistStorage, StorageValue } from 'zustand/middleware';
+import { SCHEMA_VERSION } from '../types';
 import type { PersistedData } from '../types';
 import { validatePersistedData } from './backup';
 
@@ -48,7 +49,7 @@ export const stateStorage: PersistStorage<PersistedData> = {
 
       return {
         state: result.data,
-        version: (parsed as { version?: number }).version
+        version: SCHEMA_VERSION
       } satisfies StorageValue<PersistedData>;
     } catch {
       try {

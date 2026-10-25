@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Nutrients } from '../../types';
+import type { Nutrients, WeightEntry } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import {
   formatDayMedium,
@@ -11,14 +11,96 @@ import {
   todayKey
 } from '../../lib/dates';
 import { EMPTY_NUTRIENTS } from '../../lib/nutrition';
-import { clamp01, formatNumber } from '../../lib/format';
-import { IconChevronRight } from '../../components/icons';
+import {
+  clamp01,
+  formatDecimal,
+  formatNumber,
+  kilogramsToPounds,
+  poundsToKilograms
+} from '../../lib/format';
+import { IconChevronRight, IconScale, IconTrash } from '../../components/icons';
 
 export function HistoryPage() {
   const navigate = useNavigate();
   const entries = useAppStore((state) => state.entries);
   const targets = useAppStore((state) => state.targets);
+  const weights = useAppStore((state) => state.weights);
+  const profile = useAppStore((state) => state.profile);
+  const settings = useAppStore((state) => state.settings);
+  const logWeight = useAppStore((state) => state.logWeight);
+  const deleteWeight = useAppStore((state) => state.deleteWeight);
   const today = todayKey();
+
+  const sortedWeights = useMemo(
+    () => [...weights].sort((a, b) => b.date.localeCompare(a.date)),
+    [weights]
+  );
+  const latestWeight = sortedWeights[0] ?? null;
+  const weekWeightKeys = useMemo(() => new Set(lastNDayKeys(7, today)), [today]);
+  const weekWeights = useMemo(
+    () => sortedWeights.filter((item) => weekWeightKeys.has(item.date)).slice(0, 7),
+    [sortedWeights, weekWeightKeys]
+  );
+  const weekWeightAverage =
+    weekWeights.length > 0
+      ? weekWeights.reduce((total, item) => total + item.kg, 0) / weekWeights.length
+      : null;
+
+  const [weightInput, setWeightInput] = useState('');
+  const [weightError, setWeightError] = useState('');
+  const [confirmWeight, setConfirmWeight] = useState<string | null>(null);
+
+  useEffect(() => {
+    const source = latestWeight?.kg ?? profile?.weightKg;
+    if (source === undefined) {
+      setWeightInput('');
+      return;
+    }
+    setWeightInput(
+      settings.units === 'imperial'
+        ? String(Math.round(kilogramsToPounds(source)))
+        : String(Math.round(source * 10) / 10)
+    );
+  }, [latestWeight?.id, latestWeight?.kg, profile?.weightKg, settings.units]);
+
+  function handleLogWeight() {
+    const value = Number(weightInput);
+    const kg = settings.units === 'imperial' ? poundsToKilograms(value) : value;
+
+    if (
+      !Number.isFinite(kg) ||
+      kg < 30 ||
+      kg > 300
+    ) {
+      setWeightError('Enter a weight between 30 and 300 kg (66 and 660 lb).');
+      return;
+    }
+
+    setWeightError('');
+    logWeight(today, Math.round(kg * 10) / 10);
+  }
+
+  function displayWeight(item: WeightEntry): string {
+    return settings.units === 'imperial'
+      ? `${formatNumber(kilogramsToPounds(item.kg))} lb`
+      : `${formatDecimal(item.kg)} kg`;
+  }
+
+  const weightChart = [...weekWeights].reverse();
+  const chartValues = weightChart.map((item) => item.kg);
+  const chartMin = chartValues.length > 0 ? Math.min(...chartValues) : 0;
+  const chartMax = chartValues.length > 0 ? Math.max(...chartValues) : 0;
+  const chartRange = Math.max(0.5, chartMax - chartMin);
+  const chartPoints = chartValues
+    .map((value, index) => {
+      const x = chartValues.length === 1 ? 50 : (index / (chartValues.length - 1)) * 100;
+      const y = 36 - ((value - chartMin) / chartRange) * 30;
+      return `${x},${Math.max(4, Math.min(38, y))}`;
+    })
+    .join(' ');
+  const weightChartLabel = weightChart
+    .map((item) => `${formatDayMedium(item.date)}: ${displayWeight(item)}`)
+    .join('. ');
 
   const totalsByDate = useMemo(() => {
     const map = new Map<string, Nutrients>();
@@ -111,6 +193,143 @@ export function HistoryPage() {
             ))}
           </div>
         </div>
+      </section>
+
+      <section className="card weight-card" aria-labelledby="weight-heading">
+        <div className="card-head">
+          <h2 id="weight-heading">
+            <IconScale size={17} /> Weight
+          </h2>
+          <span className="card-note">
+            {weekWeights.length > 0 ? '7-day average' : 'Local only'}
+          </span>
+        </div>
+
+        {weekWeights.length > 0 ? (
+          <>
+            <div className="weight-stats">
+              <div>
+                <span>Latest</span>
+                <strong>{latestWeight ? displayWeight(latestWeight) : '—'}</strong>
+              </div>
+              <div>
+                <span>7-day average</span>
+                <strong>
+                  {weekWeightAverage !== null
+                    ? settings.units === 'imperial'
+                      ? `${formatNumber(kilogramsToPounds(weekWeightAverage))} lb`
+                      : `${formatDecimal(weekWeightAverage)} kg`
+                    : '—'}
+                </strong>
+              </div>
+            </div>
+
+            <div
+              className="weight-chart"
+              role="img"
+              aria-label={`Weight for the last 7 days. ${weightChartLabel}`}
+            >
+              <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+                {chartValues.length > 1 ? (
+                  <polyline
+                    points={chartPoints}
+                    fill="none"
+                    stroke="var(--accent-text)"
+                    strokeWidth="1.6"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : (
+                  <circle cx="50" cy="20" r="2.4" fill="var(--accent-text)" />
+                )}
+              </svg>
+              <div className="weight-chart-labels" aria-hidden="true">
+                {weightChart.map((item) => (
+                  <span key={item.date}>{formatDayMedium(item.date)}</span>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="empty-note">
+            Log a weight to see a quiet 7-day line. No goal, no streaks.
+          </p>
+        )}
+
+        <div className="weight-form">
+          <label className="field">
+            <span className="field-label">
+              Today ({settings.units === 'imperial' ? 'lb' : 'kg'})
+            </span>
+            <span className="unit-input">
+              <input
+                value={weightInput}
+                onChange={(event) => {
+                  setWeightInput(event.target.value);
+                  setWeightError('');
+                }}
+                inputMode="decimal"
+                aria-invalid={Boolean(weightError)}
+                placeholder={settings.units === 'imperial' ? '160' : '72'}
+              />
+              <span className="unit">{settings.units === 'imperial' ? 'lb' : 'kg'}</span>
+            </span>
+          </label>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleLogWeight}
+          >
+            {latestWeight?.date === today ? 'Update today' : 'Log weight'}
+          </button>
+        </div>
+        {weightError ? (
+          <p className="field-error" role="alert">
+            {weightError}
+          </p>
+        ) : null}
+
+        {sortedWeights.length > 0 ? (
+          <ul className="weight-list">
+            {sortedWeights.slice(0, 5).map((item) => (
+              <li key={item.id}>
+                <span>
+                  <strong>{displayWeight(item)}</strong>
+                  <small>{formatDayMedium(item.date)}</small>
+                </span>
+                {confirmWeight === item.id ? (
+                  <span className="weight-confirm">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-small"
+                      onClick={() => setConfirmWeight(null)}
+                    >
+                      Keep
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-small"
+                      onClick={() => {
+                        deleteWeight(item.id);
+                        setConfirmWeight(null);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Delete weight from ${formatDayMedium(item.date)}`}
+                    onClick={() => setConfirmWeight(item.id)}
+                  >
+                    <IconTrash size={15} />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <section aria-labelledby="recent-heading">

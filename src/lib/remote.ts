@@ -1,0 +1,268 @@
+import type { Food } from '../types';
+
+const OFF_BASE = 'https://world.openfoodfacts.org';
+const OFF_FIELDS =
+  'code,product_name,brands,nutriments,serving_size,serving_quantity,quantity';
+const DEVICE_KEY = 'calai:device';
+
+export const API_BASE = (import.meta.env.VITE_API_BASE ?? '')
+  .trim()
+  .replace(/\/+$/, '');
+
+export type RemoteSource = 'off' | 'usda';
+
+export type RemoteSearchResponse = {
+  foods: Food[];
+  sources: RemoteSource[];
+  cached: boolean;
+};
+
+export class RemoteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RemoteError';
+  }
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+type OffProduct = {
+  code?: string;
+  product_name?: string;
+  brands?: string;
+  serving_size?: string;
+  serving_quantity?: number | string;
+  nutriments?: Record<string, unknown>;
+};
+
+export function barcodeFoodFromOff(product: OffProduct): Food | null {
+  const name = product.product_name?.trim();
+  const code = product.code?.trim();
+  if (!name) return null;
+
+  const nutriments = product.nutriments ?? {};
+  const per100g = (key: string) => toNumber(nutriments[`${key}_100g`]);
+  const kcal =
+    per100g('energy-kcal') ??
+    (per100g('energy') !== null ? (per100g('energy') as number) / 4.184 : null);
+  const protein = per100g('proteins');
+  const carbs = per100g('carbohydrates');
+  const fat = per100g('fat');
+
+  if (kcal === null || kcal < 0 || kcal > 1000) return null;
+
+  return {
+    id: `off-${code || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    name,
+    brand: product.brands?.split(',')[0]?.trim() || undefined,
+    barcode: code || undefined,
+    servingLabel: '100 g',
+    servingGrams: 100,
+    nutrients: {
+      kcal: round1(kcal),
+      protein: round1(Math.max(0, protein ?? 0)),
+      carbs: round1(Math.max(0, carbs ?? 0)),
+      fat: round1(Math.max(0, fat ?? 0))
+    },
+    source: 'off',
+    createdAt: Date.now()
+  };
+}
+
+function sanitizeFoods(value: unknown): Food[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Food => {
+    if (!item || typeof item !== 'object') return false;
+    const food = item as Partial<Food>;
+    return (
+      typeof food.id === 'string' &&
+      typeof food.name === 'string' &&
+      food.name.length > 0 &&
+      food.name.length <= 200 &&
+      typeof food.servingLabel === 'string' &&
+      (food.source === 'off' || food.source === 'usda') &&
+      Boolean(food.nutrients) &&
+      typeof food.nutrients?.kcal === 'number' &&
+      Number.isFinite(food.nutrients.kcal)
+    );
+  });
+}
+
+async function fetchJson(url: string, init: RequestInit, timeoutMs = 7000): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  const abort = () => controller.abort();
+  init.signal?.addEventListener('abort', abort);
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        ...(init.headers ?? {})
+      }
+    });
+
+    if (!response.ok) {
+      throw new RemoteError(
+        response.status === 429
+          ? 'Food search is busy. Try again in a moment.'
+          : 'Food search is unavailable right now.'
+      );
+    }
+
+    return (await response.json()) as unknown;
+  } catch (error) {
+    if (error instanceof RemoteError) throw error;
+    throw new RemoteError(
+      error instanceof DOMException && error.name === 'AbortError'
+        ? 'Food search timed out.'
+        : 'Food search needs a connection.'
+    );
+  } finally {
+    window.clearTimeout(timeout);
+    init.signal?.removeEventListener('abort', abort);
+  }
+}
+
+async function searchOffDirect(query: string, signal: AbortSignal): Promise<Food[]> {
+  const params = new URLSearchParams({
+    search_terms: query,
+    page_size: '20',
+    fields: OFF_FIELDS
+  });
+  const payload = await fetchJson(
+    `${OFF_BASE}/api/v2/search?${params.toString()}`,
+    { signal }
+  );
+
+  if (!payload || typeof payload !== 'object') return [];
+  const products = (payload as { products?: unknown }).products;
+  if (!Array.isArray(products)) return [];
+
+  const seen = new Set<string>();
+  const foods: Food[] = [];
+
+  for (const product of products) {
+    if (!product || typeof product !== 'object') continue;
+    const food = barcodeFoodFromOff(product as OffProduct);
+    if (!food) continue;
+    const key = food.barcode || food.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    foods.push(food);
+  }
+
+  return foods;
+}
+
+export async function searchRemoteFoods(
+  query: string,
+  signal: AbortSignal
+): Promise<RemoteSearchResponse> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    return { foods: [], sources: [], cached: false };
+  }
+
+  if (API_BASE) {
+    const params = new URLSearchParams({ q: trimmed, limit: '24' });
+    const payload = await fetchJson(
+      `${API_BASE}/v1/foods/search?${params.toString()}`,
+      { signal }
+    );
+
+    if (!payload || typeof payload !== 'object') {
+      return { foods: [], sources: [], cached: false };
+    }
+
+    const record = payload as {
+      foods?: unknown;
+      sources?: unknown;
+      cached?: unknown;
+    };
+    const sources = Array.isArray(record.sources)
+      ? record.sources.filter(
+          (source): source is RemoteSource => source === 'off' || source === 'usda'
+        )
+      : [];
+
+    return {
+      foods: sanitizeFoods(record.foods),
+      sources,
+      cached: record.cached === true
+    };
+  }
+
+  return {
+    foods: await searchOffDirect(trimmed, signal),
+    sources: ['off'],
+    cached: false
+  };
+}
+
+async function barcodeOffDirect(code: string, signal: AbortSignal): Promise<Food | null> {
+  const payload = await fetchJson(
+    `${OFF_BASE}/api/v2/product/${encodeURIComponent(code)}.json?fields=${OFF_FIELDS}`,
+    { signal }
+  );
+
+  if (!payload || typeof payload !== 'object') return null;
+  const record = payload as { status?: number; product?: OffProduct };
+  if (record.status !== 1 || !record.product) return null;
+  return barcodeFoodFromOff(record.product);
+}
+
+export async function lookupBarcode(
+  code: string,
+  signal: AbortSignal
+): Promise<Food | null> {
+  if (!/^\d{8,14}$/.test(code)) {
+    throw new RemoteError('Enter an 8 to 14 digit barcode.');
+  }
+
+  if (API_BASE) {
+    const payload = await fetchJson(
+      `${API_BASE}/v1/foods/barcode/${encodeURIComponent(code)}`,
+      { signal }
+    );
+
+    if (!payload || typeof payload !== 'object') return null;
+    const record = payload as { foods?: unknown };
+    return sanitizeFoods(record.foods)[0] ?? null;
+  }
+
+  return barcodeOffDirect(code, signal);
+}
+
+export function getDeviceToken(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_KEY);
+    if (existing && existing.length >= 8) return existing;
+    const token =
+      typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(DEVICE_KEY, token);
+    return token;
+  } catch {
+    return '';
+  }
+}
+
+export function isRemoteSource(source: Food['source']): boolean {
+  return source === 'off' || source === 'usda';
+}

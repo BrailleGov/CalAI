@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Food } from '../../types';
+import { FOOD_SOURCE_LABELS } from '../../types';
 import { SEED_FOODS } from '../../data/seedFoods';
 import { useAppStore } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast';
@@ -19,6 +20,7 @@ import {
 
 export function FoodsPage() {
   const customFoods = useAppStore((state) => state.customFoods);
+  const remoteFoods = useAppStore((state) => state.remoteFoods);
   const favorites = useAppStore((state) => state.favorites);
   const recentFoodIds = useAppStore((state) => state.recentFoodIds);
   const toggleFavorite = useAppStore((state) => state.toggleFavorite);
@@ -32,7 +34,10 @@ export function FoodsPage() {
   const [editing, setEditing] = useState<Food | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const allFoods = useMemo(() => [...customFoods, ...SEED_FOODS], [customFoods]);
+  const allFoods = useMemo(
+    () => [...customFoods, ...remoteFoods, ...SEED_FOODS],
+    [customFoods, remoteFoods]
+  );
   const results = useMemo(
     () => rankFoods(allFoods, query, favorites, recentFoodIds),
     [allFoods, favorites, query, recentFoodIds]
@@ -88,7 +93,8 @@ export function FoodsPage() {
           </button>
         </div>
         <p className="page-lede">
-          Common foods work offline. Custom foods are yours and can be edited at any time.
+          Common foods work offline. Foods you log from online search are saved here too.
+          Custom foods can be edited at any time.
         </p>
       </header>
 
@@ -116,7 +122,9 @@ export function FoodsPage() {
               <div className="food-row-main">
                 <span className="food-name">
                   {food.name}
-                  {food.source === 'custom' ? <span className="badge">custom</span> : null}
+                  {FOOD_SOURCE_LABELS[food.source] ? (
+                    <span className="badge">{FOOD_SOURCE_LABELS[food.source]}</span>
+                  ) : null}
                 </span>
                 <span className="food-meta">
                   {food.servingLabel} · {formatNumber(food.nutrients.kcal)} kcal

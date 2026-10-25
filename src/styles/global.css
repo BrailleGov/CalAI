@@ -1967,3 +1967,536 @@ svg {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   v0.2 — online search, barcode, recipes, weight, water, reminders
+   ========================================================================== */
+
+.bottom-nav {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.card-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.search-row .search-field {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.scan-button {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+}
+
+.online-results {
+  margin-top: 16px;
+}
+
+.online-note,
+.online-error {
+  padding: 12px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.online-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.online-error p {
+  margin: 0;
+}
+
+.barcode-scanner {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.barcode-video-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.barcode-video {
+  width: 100%;
+  max-height: 320px;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  background: #000;
+  object-fit: cover;
+}
+
+.barcode-frame {
+  position: absolute;
+  top: 30%;
+  left: 12%;
+  right: 12%;
+  height: 38%;
+  border: 2px solid var(--accent-text);
+  border-radius: 12px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+
+.scanner-status {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.barcode-manual {
+  gap: 10px;
+}
+
+.reminder-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px 13px;
+  border: 1px solid var(--accent-text);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.reminder-banner > svg {
+  color: var(--accent-text);
+}
+
+.reminder-copy {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.reminder-copy strong {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.reminder-copy span {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.water-card {
+  margin-top: 16px;
+}
+
+.water-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--panel-2);
+}
+
+.water-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--macro-carbs);
+  transition: width 0.25s var(--ease);
+}
+
+.water-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.weight-card {
+  margin-top: 22px;
+}
+
+.weight-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.weight-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weight-stats span {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.weight-stats strong {
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.weight-chart {
+  margin-bottom: 14px;
+}
+
+.weight-chart svg {
+  width: 100%;
+  height: 72px;
+}
+
+.weight-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 4px;
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+}
+
+.weight-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.weight-form .field {
+  flex: 1;
+}
+
+.weight-form .btn {
+  flex: 0 0 auto;
+}
+
+.weight-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.weight-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.weight-list li > span {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.weight-list strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.weight-list small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.weight-confirm {
+  display: flex;
+  gap: 6px;
+}
+
+.recipe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recipe-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recipe-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.recipe-card-head h2 {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.recipe-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.recipe-numbers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.recipe-numbers div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recipe-numbers span {
+  color: var(--muted);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.recipe-numbers strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.empty-card h2 {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.empty-card p {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.recipe-form {
+  gap: 14px;
+}
+
+.recipe-add {
+  position: relative;
+}
+
+.recipe-results {
+  margin-top: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.recipe-results .food-row {
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.recipe-results li:last-child .food-row {
+  border-bottom: 0;
+}
+
+.ingredient-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.ingredient-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ingredient-list li:last-child {
+  border-bottom: 0;
+}
+
+.ingredient-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ingredient-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.icon-button-small {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.ingredient-quantity input {
+  width: 46px;
+  height: 28px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: center;
+  font-size: 12px;
+}
+
+.recipe-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.recipe-totals div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recipe-totals span {
+  color: var(--muted);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.recipe-totals strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.check-label input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-text);
+}
+
+.reminder-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.reminder-off-note {
+  padding: 0 14px 14px;
+  margin-top: 0;
+}
+
+.reminder-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.reminder-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reminder-list li:last-child {
+  border-bottom: 0;
+}
+
+.reminder-time input {
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.fine-print code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text);
+}
+
+@media (max-width: 380px) {
+  .reminder-banner {
+    flex-wrap: wrap;
+  }
+
+  .reminder-copy {
+    flex-basis: calc(100% - 40px);
+  }
+
+  .recipe-numbers {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .weight-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.barcode-video-wrap[hidden] {
+  display: none;
+}

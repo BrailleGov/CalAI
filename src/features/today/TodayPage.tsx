@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import type { Entry, Meal } from '../../types';
+import type { Entry, Meal, Reminder } from '../../types';
 import { MEALS, MEAL_LABELS } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { ProgressRing } from '../../components/ProgressRing';
@@ -23,7 +23,15 @@ import {
   totalsForMeal
 } from '../../lib/nutrition';
 import { clamp01, formatDecimal, formatNumber } from '../../lib/format';
-import { IconChevronLeft, IconChevronRight, IconPlus } from '../../components/icons';
+import { dismissReminder, dueReminder, wasReminderDismissed } from '../../lib/reminders';
+import {
+  IconBell,
+  IconChevronLeft,
+  IconChevronRight,
+  IconPlus,
+  IconWater,
+  IconX
+} from '../../components/icons';
 
 function MacroBar({
   label,
@@ -67,9 +75,15 @@ export function TodayPage() {
 
   const entries = useAppStore((state) => state.entries);
   const targets = useAppStore((state) => state.targets);
+  const water = useAppStore((state) => state.water);
+  const addWater = useAppStore((state) => state.addWater);
+  const deleteWater = useAppStore((state) => state.deleteWater);
+  const reminders = useAppStore((state) => state.reminders);
+  const settings = useAppStore((state) => state.settings);
 
   const [addMeal, setAddMeal] = useState<Meal | null>(null);
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
+  const [due, setDue] = useState<Reminder | null>(null);
 
   const safeDate = date || today;
   const dayEntries = useMemo(
@@ -77,6 +91,41 @@ export function TodayPage() {
     [entries, safeDate]
   );
   const totals = useMemo(() => sumEntries(dayEntries), [dayEntries]);
+  const dayWater = useMemo(
+    () => water.filter((item) => item.date === safeDate),
+    [safeDate, water]
+  );
+  const waterTotal = dayWater.reduce((total, item) => total + item.ml, 0);
+  const lastWater = dayWater[dayWater.length - 1];
+  const waterGoal = settings.waterGoalMl || 2000;
+
+  useEffect(() => {
+    if (date !== today || !reminders.enabled) {
+      setDue(null);
+      return;
+    }
+
+    const check = () => {
+      const now = new Date();
+      const candidate = dueReminder(
+        reminders.items,
+        now,
+        reminders.quietStart,
+        reminders.quietEnd
+      );
+      setDue(candidate && !wasReminderDismissed(candidate, now) ? candidate : null);
+    };
+
+    check();
+    const timer = window.setInterval(check, 60_000);
+    return () => window.clearInterval(timer);
+  }, [date, reminders, today]);
+
+  function waterLabel(ml: number): string {
+    return settings.units === 'imperial'
+      ? `${formatNumber(ml / 29.5735)} oz`
+      : `${formatNumber(ml)} ml`;
+  }
 
   if (!date) {
     return <Navigate to={`/day/${today}`} replace />;
@@ -120,6 +169,37 @@ export function TodayPage() {
         </button>
       ) : null}
 
+      {due ? (
+        <section className="reminder-banner" aria-label="Meal reminder">
+          <IconBell size={20} />
+          <div className="reminder-copy">
+            <strong>Time to log {MEAL_LABELS[due.meal].toLowerCase()}</strong>
+            <span>Your {due.time} reminder is on for this device.</span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-small"
+            onClick={() => {
+              setAddMeal(due.meal);
+              setDue(null);
+            }}
+          >
+            Log now
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Dismiss reminder for today"
+            onClick={() => {
+              dismissReminder(due);
+              setDue(null);
+            }}
+          >
+            <IconX size={16} />
+          </button>
+        </section>
+      ) : null}
+
       <section
         className={`summary-card${isOver ? ' summary-over' : ''}`}
         aria-label="Daily summary"
@@ -161,6 +241,53 @@ export function TodayPage() {
             />
             <MacroBar label="Fat" value={totals.fat} target={targets.fat} tone="fat" />
           </div>
+        </div>
+      </section>
+
+      <section className="card water-card" aria-labelledby="water-heading">
+        <div className="card-head">
+          <h2 id="water-heading">
+            <IconWater size={17} /> Water
+          </h2>
+          <span className="card-note">
+            {waterLabel(waterTotal)} / {waterLabel(waterGoal)}
+          </span>
+        </div>
+
+        <div
+          className="water-track"
+          role="progressbar"
+          aria-label="Water logged today"
+          aria-valuemin={0}
+          aria-valuemax={waterGoal}
+          aria-valuenow={Math.min(waterTotal, waterGoal)}
+          aria-valuetext={`${waterLabel(waterTotal)} of ${waterLabel(waterGoal)}`}
+        >
+          <span
+            style={{ width: `${clamp01(waterTotal / waterGoal) * 100}%` }}
+          />
+        </div>
+
+        <div className="water-actions">
+          {(settings.units === 'imperial' ? [240, 480] : [250, 500]).map((amount) => (
+            <button
+              key={amount}
+              type="button"
+              className="btn btn-ghost btn-small"
+              onClick={() => addWater(date, amount)}
+            >
+              + {waterLabel(amount)}
+            </button>
+          ))}
+          {lastWater ? (
+            <button
+              type="button"
+              className="btn btn-quiet btn-small"
+              onClick={() => deleteWater(lastWater.id)}
+            >
+              Undo last
+            </button>
+          ) : null}
         </div>
       </section>
 
