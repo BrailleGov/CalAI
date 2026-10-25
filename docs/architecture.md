@@ -24,12 +24,13 @@ no accounts, no network calls at runtime except the app's own assets.
 
 ## 2. Stack
 
-Chosen for v0.1:
+Chosen and shipped in v0.1:
 
 - **Vite** (v6 line, compatible with the installed Node 20.12) + **React 18** + **TypeScript**.
 - **HashRouter** (`#/today`, `#/foods`, …) so deep links work on GitHub Pages without a
   rewrite hack, including offline.
 - **Zustand** for app state, with the persist middleware backed by **idb-keyval** (IndexedDB).
+- **HashRouter** routes: `#/today`, `#/day/YYYY-MM-DD`, `#/foods`, `#/history`, `#/settings`.
 - **Plain CSS** with design tokens; no UI kit. Avoids restyling fights and keeps the payload small.
 - **vite-plugin-pwa** (Workbox) for the manifest, icons, and precached app shell.
 - **Vitest** for nutrition, date, and import/export tests.
@@ -54,7 +55,7 @@ Current:
 
 ```
 .
-├── index.html              # v0.1 app entry (placeholder until build)
+├── index.html              # Vite entry; React mounts into #root
 ├── 404.html
 ├── assets/                 # built output is not committed
 ├── public/                 # icons, manifest inputs
@@ -121,7 +122,7 @@ type Entry = {
   name: string;
   servingLabel: string;
   quantity: number;          // multiplier of the serving
-  nutrients: Nutrients;      // snapshot × quantity, frozen at log time
+  nutrients: Nutrients;      // per-serving snapshot, frozen at log time
   createdAt: number;
 };
 
@@ -160,7 +161,7 @@ migrations.
 - One IndexedDB key (`calai:v1`) via `idb-keyval`, written by Zustand's persist middleware.
 - Hydration is gated: the app renders a quiet splash until storage resolves, then either
   onboarding or the diary. This prevents an onboarding flash.
-- Writes are debounced by Zustand/React batching; the object is small (text only).
+- Writes go through Zustand persist to a single IndexedDB key; the payload is small (text only).
 - Storage is requested persistent on first successful log (`navigator.storage.persist()`)
   where supported.
 - Export envelope: `{ app: "calai", schemaVersion: 1, exportedAt, data }`. Import validates
@@ -168,8 +169,8 @@ migrations.
 
 ### Nutrition and target math
 
-- Stored food nutrients are per serving. Entry nutrients = `round(perServing × quantity)`
-  and are frozen, so editing a food never rewrites old days.
+- Stored food nutrients are per serving. Entries keep a per-serving snapshot and a quantity
+  multiplier; totals multiply on read, so editing a food never rewrites old days.
 - Totals are pure functions over entries for a date, rounded for display only.
 - Targets: Mifflin–St Jeor BMR × activity factor, adjusted by goal and rate
   (≈ 7700 kcal per kg). Protein default 1.6 g/kg, fat 25% of kcal, carbs fill the rest.
@@ -282,7 +283,8 @@ v0.1+ PWA:
 
 - GitHub Actions workflow builds with Node 20 and publishes `dist` via
   `actions/configure-pages`, `actions/upload-pages-artifact`, `actions/deploy-pages`.
-- Pages source is set to **GitHub Actions** once the first build lands.
+- Pages source is **GitHub Actions** (`build_type: workflow`); `.github/workflows/deploy.yml`
+  runs tests, builds, and deploys `dist/` on every push to `main`.
 - `vite.config.ts` sets `base: '/CalAI/'`; the manifest mirrors it.
 - No secrets are needed for v0.1.
 
@@ -354,5 +356,24 @@ The Worker sets its own CSP/CORS headers.
 7. QA: 360/390 px, keyboard, offline, reload persistence, auth-free install.
 8. Actions workflow, switch Pages source, verify live URL and custom 404.
 
-v0.1 is complete when the acceptance list in [../PLAN.md](../PLAN.md#3-releases) passes on
-the live site.
+v0.1 shipped on 2026-10-24 and the acceptance list in [../PLAN.md](../PLAN.md#3-releases)
+passes on the live site.
+
+
+## 15. v0.1 verification record
+
+- Unit tests: 24 passing across nutrition/target math, date keys, food search, and backup
+  validation.
+- Browser smoke (Edge, 390 × 844, mobile emulation): onboarding in metric and imperial,
+  logging from search, quick add, custom foods, entry edit/delete, export/import, reset,
+  validation errors, theme persistence across reloads, scroll reset on navigation, Escape
+  closing sheets, and a full offline reload served by the service worker.
+- Layout: no horizontal overflow at 360 px or 390 px; frame caps at 560 px on desktop.
+- PWA: manifest resolves at `/CalAI/manifest.webmanifest` with `/CalAI/` scope and three
+  icons; service worker registers and controls the page on the live HTTPS origin.
+- axe-core: 0 WCAG 2.1 A/AA violations across onboarding, diary, add/edit sheets, foods,
+  history, and settings in dark and light themes.
+- Lighthouse mobile (production build): Performance 99, Accessibility 100, Best Practices
+  100, SEO 60 (intentional `noindex` during alpha).
+- Bundle: initial JS 72.9 KB gzip, CSS 5.8 KB gzip.
+- Live: <https://braillegov.github.io/CalAI/>, custom 404 served, HTTP redirects to HTTPS.

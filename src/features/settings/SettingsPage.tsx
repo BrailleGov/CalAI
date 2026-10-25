@@ -317,6 +317,7 @@ export function SettingsPage() {
             type="file"
             accept=".json,application/json"
             className="visually-hidden"
+            aria-label="Import backup file"
             onChange={handleImport}
           />
 

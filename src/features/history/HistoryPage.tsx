@@ -132,7 +132,6 @@ export function HistoryPage() {
                   type="button"
                   className="history-row"
                   onClick={() => navigate(`/day/${date}`)}
-                  aria-label={`Open ${formatDayMedium(date)}${logged ? `, ${formatNumber(totals?.kcal ?? 0)} calories` : ', nothing logged'}`}
                 >
                   <span className="history-date">
                     <span className="history-day">{relative ?? formatWeekday(date)}</span>
@@ -144,6 +143,7 @@ export function HistoryPage() {
                   <span className={`history-kcal${logged ? '' : ' is-empty'}`}>
                     {logged ? formatNumber(totals?.kcal ?? 0) : '—'}
                   </span>
+                  {logged ? null : <span className="visually-hidden">Nothing logged</span>}
                   <IconChevronRight size={15} />
                 </button>
               </li>

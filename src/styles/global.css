@@ -32,7 +32,7 @@ html[data-theme="dark"] {
   --panel-2: #16191a;
   --text: #f3f2ec;
   --muted: #a0a29b;
-  --muted-2: #777a73;
+  --muted-2: #8a8d86;
   --line: #242826;
   --line-strong: #363b38;
   --dot: #1a1e1c;
@@ -47,12 +47,12 @@ html[data-theme="light"] {
   --panel-2: #efebe1;
   --text: #151613;
   --muted: #5e6159;
-  --muted-2: #7f8279;
+  --muted-2: #6a6d64;
   --line: #ded9cc;
   --line-strong: #c4beaf;
   --dot: #d6d0c2;
   --shadow: rgba(40, 36, 26, 0.16);
-  --accent-text: #4f7a00;
+  --accent-text: #3f6b00;
   --accent-soft: rgba(122, 168, 0, 0.14);
   --danger: #b83a2d;
   --danger-soft: rgba(184, 58, 45, 0.1);

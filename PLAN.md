@@ -1,8 +1,9 @@
 # CalAI — product plan
 
-Status: **v0.1 approved for implementation.** v0.2+ are planned and await a separate go.
+Status: **v0.1.0 is live (alpha).** v0.2+ are planned and await a separate go.
 
 Last updated: 2026-10-24
+Live: <https://braillegov.github.io/CalAI/>
 
 ## 1. Thesis
 
@@ -51,10 +52,10 @@ and how CalAI covers it.
 
 ## 3. Releases
 
-### v0.1 — Foundation alpha (approved, in progress)
+### v0.1 — Foundation alpha (shipped)
 
 Goal: a genuinely usable local diary that can be installed and used on a phone with no
-network.
+network. Shipped as **v0.1.0** on 2026-10-24.
 
 In scope:
 
@@ -80,6 +81,12 @@ v0.1 acceptance:
 - 360 px layout has no horizontal scroll; dialogs trap focus; Escape closes.
 - Lighthouse mobile: Performance ≥ 90, Accessibility ≥ 95, PWA installable.
 - Deployed to <https://braillegov.github.io/CalAI/> via GitHub Actions.
+
+Verified on the live deployment: 24 unit tests, browser smoke tests for onboarding, logging,
+editing, deleting, export/import, offline reload, reset, and validation; no horizontal
+overflow at 360 or 390 px; axe-core reports 0 WCAG A/AA violations across screens in both
+themes; Lighthouse mobile 99 performance / 100 accessibility / 100 best practices (SEO is
+intentionally 60 while the alpha carries `noindex`). Initial JS is 72.9 KB gzip.
 
 ### v0.2 — Faster logging (planned)
 
@@ -202,19 +209,18 @@ Estimates are solo build days, not calendar promises.
 | # | Milestone | Scope | Days |
 | --- | --- | --- | --- |
 | M0 | Foundation | Repo, Pages, HTTPS, placeholder, docs | **done** |
-| M1 | v0.1 shell and data | Stack, design tokens, routing, store, IndexedDB | 3 |
-| M2 | Diary and onboarding | Targets, meals, entries, quick add | 4 |
-| M3 | Food library | Seed data, search, custom foods, recents | 3 |
-| M4 | History and settings | Charts, export/import, themes | 2 |
-| M5 | v0.1 QA and deploy | PWA, a11y, device pass, Actions deploy | 2 |
+| M1 | v0.1 shell and data | Stack, design tokens, routing, store, IndexedDB | **done** |
+| M2 | Diary and onboarding | Targets, meals, entries, quick add | **done** |
+| M3 | Food library | Seed data, search, custom foods, recents | **done** |
+| M4 | History and settings | Charts, export/import, themes | **done** |
+| M5 | v0.1 QA and deploy | PWA, a11y, device pass, Actions deploy | **done** |
 | M6 | v0.2 data | Worker, OFF/USDA search, barcode, recipes | 6 |
 | M7 | v0.2 retention | Weight, water, reminders, push | 5 |
 | M8 | v0.3 AI input | Worker AI proxy, photo + text logging, eval | 7 |
 | M9 | v0.3 chat | Context builder, chat UI, guardrails, recap | 5 |
 | M10 | v1.0 launch | Accounts/sync, legal, audits, migration | 8+ |
 
-v0.1 target: M1–M5 (≈ 14 build days). Critical path is data model → diary → food search →
-QA; history and settings depend on the same store.
+v0.1 shipped as M1–M5. Next up is v0.2 (M6–M7), pending a go-ahead.
 
 ## 9. Non-goals
 

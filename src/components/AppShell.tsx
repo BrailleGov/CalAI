@@ -17,9 +17,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 export function Splash() {
   return (
-    <div className="splash">
+    <main className="splash">
       <Brand />
       <p className="splash-note">Opening your diary…</p>
-    </div>
+    </main>
   );
 }

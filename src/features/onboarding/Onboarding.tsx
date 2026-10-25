@@ -243,7 +243,7 @@ export function Onboarding() {
         <span style={{ width: `${((step + 1) / 3) * 100}%` }} />
       </div>
 
-      <div className="onboarding-body" key={step}>
+      <main className="onboarding-body" key={step}>
         {step === 0 ? (
           <>
             <p className="eyebrow">Set up</p>
@@ -552,7 +552,7 @@ export function Onboarding() {
             </p>
           </>
         ) : null}
-      </div>
+      </main>
 
       <footer className="onboarding-foot">
         {step > 0 ? (
