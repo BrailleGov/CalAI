@@ -4,6 +4,7 @@ Status: **v0.1.1 is live (alpha).** v0.2+ are planned and await a separate go.
 
 Last updated: 2026-10-24
 Live: <https://braillegov.github.io/CalAI/>
+Handoff notes and resume prompt: [NOTES.md](NOTES.md)
 
 ## 1. Thesis
 

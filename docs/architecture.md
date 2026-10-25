@@ -2,7 +2,8 @@
 
 This document covers how the product plan in [../PLAN.md](../PLAN.md) gets built. It
 describes the v0.1 implementation that exists in this repository and the extensions planned
-for v0.2/v0.3. Nothing in the "planned" sections is implemented yet.
+for v0.2/v0.3. Nothing in the "planned" sections is implemented yet. Operational caveats and
+a handoff prompt are in [../NOTES.md](../NOTES.md).
 
 ## 1. System overview
 

@@ -48,6 +48,7 @@ from the v0.1.0 IndexedDB store.
 │   ├── styles/global.css
 │   └── types.ts
 ├── docs/architecture.md
+├── NOTES.md                    # handoff notes and next-session prompt
 ├── PLAN.md
 └── .github/workflows/deploy.yml
 ```
@@ -116,4 +117,5 @@ source back to a branch. The deployment takes about a minute.
 v0.2 is the "faster logging" release: remote food search (Open Food Facts + USDA), barcode
 scanning, favorites/recents improvements, recipes, weight/water, and reminders including Web
 Push. v0.3 adds photo recognition, natural-language logging, and a data-grounded chat.
-See [PLAN.md](PLAN.md) for scope, milestones, and open decisions.
+See [PLAN.md](PLAN.md) for scope, milestones, and open decisions. Current limitations,
+QA gaps, and a ready-to-paste next-session prompt live in [NOTES.md](NOTES.md).
