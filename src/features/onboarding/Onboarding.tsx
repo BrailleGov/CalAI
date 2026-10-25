@@ -831,8 +831,8 @@ export function Onboarding() {
             </label>
 
             <p className="fine-print">
-              Reminders are off by default. You can turn on in-app reminders, a calendar file, or
-              optional SMS in Settings.
+              Reminders are SMS only and off by default. Set times, quiet hours, and an optional
+              number in Settings when you want them.
             </p>
           </>
         ) : null}
@@ -933,7 +933,7 @@ export function Onboarding() {
                 </li>
                 <li>
                   <span>Reminders</span>
-                  <strong>Off — change in Settings</strong>
+                  <strong>SMS only — off until set up</strong>
                 </li>
               </ul>
             </div>

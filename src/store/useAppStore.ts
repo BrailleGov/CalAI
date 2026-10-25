@@ -90,6 +90,7 @@ type Actions = {
   updateCustomFood: (food: Food) => void;
   deleteCustomFood: (id: string) => void;
   cacheRemoteFood: (food: Food) => void;
+  cacheRemoteFoods: (foods: Food[]) => void;
   logFood: (input: LogFoodInput) => void;
   quickAdd: (input: QuickAddInput) => void;
   updateEntryQuantity: (id: string, quantity: number) => void;
@@ -182,6 +183,17 @@ export const useAppStore = create<AppStore>()(
           ].slice(0, REMOTE_CACHE_LIMIT)
         })),
 
+      cacheRemoteFoods: (foods) =>
+        set((state) => {
+          const incoming = new Set(foods.map((food) => food.id));
+          return {
+            remoteFoods: [
+              ...foods,
+              ...state.remoteFoods.filter((item) => !incoming.has(item.id))
+            ].slice(0, REMOTE_CACHE_LIMIT)
+          };
+        }),
+
       logFood: ({ food, meal, date, quantity }) => {
         const entry: Entry = {
           id: createId(),
@@ -202,7 +214,7 @@ export const useAppStore = create<AppStore>()(
             ...state.recentFoodIds.filter((id) => id !== food.id)
           ].slice(0, RECENT_LIMIT),
           remoteFoods:
-            food.source === 'off' || food.source === 'usda'
+            food.source === 'off' || food.source === 'usda' || food.source === 'ai'
               ? [
                   food,
                   ...state.remoteFoods.filter((item) => item.id !== food.id)

@@ -47,7 +47,7 @@ test.describe('accessibility', () => {
     await expectNoViolations(page, 'settings dark');
   });
 
-  test('recipes, reminders, and barcode screens have no A/AA violations', async ({ page }) => {
+  test('recipes, SMS settings, and barcode screens have no A/AA violations', async ({ page }) => {
     await completeOnboarding(page);
 
     await page.getByRole('link', { name: 'Recipes', exact: true }).click();
@@ -57,12 +57,12 @@ test.describe('accessibility', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
 
     await page.getByRole('link', { name: 'Settings', exact: true }).click();
-    await page.getByRole('checkbox', { name: 'In-app reminders' }).check();
-    await expectNoViolations(page, 'reminders on dark');
+    await expect(page.getByRole('heading', { name: 'SMS reminders' })).toBeVisible();
+    await expectNoViolations(page, 'SMS settings dark');
 
     await page.getByRole('link', { name: 'Today', exact: true }).click();
     await page.getByRole('button', { name: 'Add food to Breakfast' }).click();
-    await page.getByRole('button', { name: 'Scan barcode' }).click();
+    await page.getByRole('button', { name: 'Barcode' }).click();
     await expectNoViolations(page, 'barcode screen dark');
   });
 

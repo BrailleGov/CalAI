@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Food, Nutrients } from '../../types';
+import { AiFoodAssist } from './AiFoodAssist';
 
 export type FoodFormValues = {
   name: string;
@@ -69,6 +70,20 @@ export function FoodForm({ initial, submitLabel, onSubmit }: FoodFormProps) {
 
   return (
     <form className="form" onSubmit={handleSubmit} noValidate>
+      {!initial ? (
+        <AiFoodAssist
+          onApply={(draft) => {
+            setName(draft.name);
+            setServingLabel(draft.servingLabel);
+            setKcal(String(draft.nutrients.kcal));
+            setProtein(String(draft.nutrients.protein));
+            setCarbs(String(draft.nutrients.carbs));
+            setFat(String(draft.nutrients.fat));
+            setErrors({});
+          }}
+        />
+      ) : null}
+
       <label className="field">
         <span className="field-label">Name</span>
         <input

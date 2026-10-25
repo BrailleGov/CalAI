@@ -1,12 +1,12 @@
 # CalAI Worker
 
 Optional Cloudflare Worker for CalAI. The PWA remains local-first and fully usable without
-it. The Worker adds cached food search, USDA results, DeepSeek AI, encrypted cloud backup,
-outbound Textbelt SMS reminders, and Web Push.
+it. The Worker adds cached food search, USDA results, a shared AI food library, DeepSeek AI,
+encrypted cloud backup, outbound Textbelt SMS reminders, and (dormant) Web Push endpoints.
 
 Deployed: <https://calai-api.braille.workers.dev> (account `6e8aa19c29eece010d2447b7f666632b`).
 KV `CALAI_CACHE` and D1 `calai` ids are committed in `wrangler.toml`; runtime secrets live in
-Cloudflare. `GET /health` reports `search/ai/sync/sms/push` all true. Local `wrangler dev`
+Cloudflare. `GET /health` reports `search/ai/sharedFoods/sync/sms/push` all true. Local `wrangler dev`
 still fails to start workerd on this Windows/Node 20 machine; live HTTP behavior is verified
 with the deployed Worker instead.
 
@@ -17,6 +17,8 @@ with the deployed Worker instead.
 | GET | `/health` | Liveness + configured capability flags |
 | GET | `/v1/foods/search?q=oat+milk&limit=20` | Open Food Facts + optional USDA, KV-cached 7 days |
 | GET | `/v1/foods/barcode/:code` | Open Food Facts barcode lookup, cached |
+| GET | `/v1/foods/library?q=paneer` | Search AI-generated foods shared across devices |
+| POST | `/v1/foods/discover` | DeepSeek generates 4–6 foods, stores them in the shared D1 library |
 | POST | `/v1/push/subscribe` | Store/update a push subscription and reminder times |
 | POST | `/v1/push/unsubscribe` | Remove a push subscription |
 | POST | `/v1/auth/register` | Issue a device token; stores only its SHA-256 hash |
@@ -91,8 +93,8 @@ variable.
 - `ALLOWED_ORIGINS` — comma-separated CORS allowlist. Defaults to the GitHub Pages origin
   plus localhost dev ports.
 - `DAILY_SEARCH_LIMIT` — default `300` requests per IP per UTC day when KV is bound.
-- `AI_DAILY_RECOGNIZE` / `AI_DAILY_PARSE` / `AI_DAILY_CHAT` / `AI_DAILY_RECIPE` — defaults
-  `10` / `40` / `60` / `20` per device+IP per UTC day.
+- `AI_DAILY_RECOGNIZE` / `AI_DAILY_PARSE` / `AI_DAILY_CHAT` / `AI_DAILY_RECIPE` /
+  `AI_DAILY_FOODS` — defaults `10` / `40` / `60` / `20` / `20` per device+IP per UTC day.
 - `AI_MONTHLY_REQUEST_CAP` — default `5000` across the whole Worker.
 
 ## Device auth and cloud backup
@@ -120,6 +122,9 @@ encrypted table.
   writing entries.
 - Thinking is disabled for latency. Requests have explicit timeouts and no automatic retries
   to avoid duplicate spend.
+- Food search discovery asks DeepSeek for generic foods matching the query, clamps and
+  dedupes them, and stores them in `shared_foods` for every device. A shared lookup runs first;
+  when at least four stored matches exist, no model call is made. Values are estimates.
 - AI output is an estimate, not medical advice. A formal eval set and stronger abuse control
   (Turnstile/accounts) are still needed before public scale.
 
@@ -171,15 +176,16 @@ npx vitest run worker/src
 ```
 
 Live provider calls are not part of CI. Text/search smoke tests can be done with `curl` or the
-app after deployment. The D1 schema is in `migrations/0001_init.sql`; `ensureSchema` creates
-the same tables at runtime so a missed migration does not break local development. Deployment
-smoke rows were deleted from D1 after verification, so `devices`, `sync_snapshots`, and
-`sms_prefs` are empty.
+app after deployment. The D1 schema is in `migrations/0001_init.sql` and
+`migrations/0002_shared_foods.sql`; `ensureSchema` creates the same tables at runtime so a
+missed migration does not break local development. Deployment smoke rows were deleted from D1
+after verification, so `devices`, `sync_snapshots`, and `sms_prefs` are empty.
 
 ## Privacy
 
 Queries go to Open Food Facts (and USDA when configured) only when the user searches. AI
-requests happen only after explicit consent and contain the chosen photo/text or locally
-computed aggregates. The Worker does not log prompts, photos, food names, calorie values,
-phone numbers, or keys. It stores device hashes, encrypted snapshots, encrypted SMS
-preferences, SMS delivery status, quotas, and push subscriptions.
+requests happen only after explicit consent and contain the chosen photo/text, search words,
+or locally computed aggregates. The Worker does not log prompts, photos, food names, calorie
+values, phone numbers, or keys. It stores device hashes, encrypted snapshots, encrypted SMS
+preferences, SMS delivery status, quotas, push subscriptions, and the public shared food
+library (AI-generated names and nutrition only).

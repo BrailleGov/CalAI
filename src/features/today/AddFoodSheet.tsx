@@ -7,6 +7,7 @@ import { useToast } from '../../components/Toast';
 import { Sheet } from '../../components/Sheet';
 import { FoodForm } from '../foods/FoodForm';
 import type { FoodFormValues } from '../foods/FoodForm';
+import { AiFoodAssist } from '../foods/AiFoodAssist';
 import { createId } from '../../lib/id';
 import { formatDecimal, formatNumber } from '../../lib/format';
 import { normalizeText, rankFoods } from '../../lib/search';
@@ -19,8 +20,11 @@ import {
 } from '../../lib/remote';
 import type { RemoteSource } from '../../lib/remote';
 import { BarcodeScanner } from './BarcodeScanner';
+import { FoodDiscoveryList } from '../foods/FoodDiscoveryList';
+import { useFoodDiscovery } from '../foods/useFoodDiscovery';
 import {
   IconBarcode,
+  IconCamera,
   IconChevronLeft,
   IconMinus,
   IconPlus,
@@ -34,6 +38,7 @@ type AddFoodSheetProps = {
   meal: Meal;
   date: string;
   onClose: () => void;
+  onOpenAi?: () => void;
 };
 
 const PRESETS = [0.5, 1, 1.5, 2];
@@ -54,7 +59,7 @@ function SourceBadge({ food }: { food: Food }) {
   return <span className="badge">{label}</span>;
 }
 
-export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
+export function AddFoodSheet({ open, meal, date, onClose, onOpenAi }: AddFoodSheetProps) {
   const customFoods = useAppStore((state) => state.customFoods);
   const remoteFoods = useAppStore((state) => state.remoteFoods);
   const recipes = useAppStore((state) => state.recipes);
@@ -128,6 +133,7 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
   );
 
   const trimmedQuery = query.trim();
+  const discovery = useFoodDiscovery(trimmedQuery, open && mode === 'search');
 
   useEffect(() => {
     if (!open || mode !== 'search' || trimmedQuery.length < 2) {
@@ -170,6 +176,11 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
     const localKeys = new Set(results.map(foodKey));
     return onlineFoods.filter((food) => !localKeys.has(foodKey(food)));
   }, [onlineFoods, results]);
+
+  const discoveryVisible = useMemo(() => {
+    const localKeys = new Set(results.map(foodKey));
+    return discovery.foods.filter((food) => !localKeys.has(foodKey(food)));
+  }, [discovery.foods, results]);
 
   const quantityValue = Number(quantity);
   const validQuantity = Number.isFinite(quantityValue) && quantityValue > 0 && quantityValue <= 100;
@@ -324,17 +335,16 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
                 autoFocus
               />
             </label>
-            <button
-              type="button"
-              className="icon-button scan-button"
-              aria-label="Scan barcode"
-              onClick={() => {
-                setBarcodeError('');
-                setMode('barcode');
-              }}
-            >
-              <IconBarcode size={20} />
-            </button>
+            {onOpenAi ? (
+              <button
+                type="button"
+                className="icon-button scan-button"
+                aria-label="Log with AI camera"
+                onClick={onOpenAi}
+              >
+                <IconCamera size={20} />
+              </button>
+            ) : null}
           </div>
 
           {recentFoodsSection()}
@@ -368,6 +378,20 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
               </li>
             ) : null}
           </ul>
+
+          {trimmedQuery.length >= 2 ? (
+            <FoodDiscoveryList
+              query={trimmedQuery}
+              foods={discoveryVisible}
+              status={discovery.status}
+              note={discovery.note}
+              error={discovery.error}
+              aiConsent={discovery.aiConsent}
+              aiConfigured={discovery.aiConfigured}
+              onChoose={chooseFood}
+              onRetry={discovery.retry}
+            />
+          ) : null}
 
           {trimmedQuery.length >= 2 ? (
             <section className="online-results" aria-label="Online food results">
@@ -450,12 +474,22 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
             </section>
           ) : null}
 
-          <div className="sheet-actions">
+          <div className="sheet-actions sheet-actions-wrap">
             <button type="button" className="btn btn-ghost" onClick={() => setMode('quick')}>
               Quick add
             </button>
             <button type="button" className="btn btn-ghost" onClick={() => setMode('custom')}>
               New food
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                setBarcodeError('');
+                setMode('barcode');
+              }}
+            >
+              <IconBarcode size={16} /> Barcode
             </button>
           </div>
           <p className="fine-print">
@@ -576,6 +610,16 @@ export function AddFoodSheet({ open, meal, date, onClose }: AddFoodSheetProps) {
           <p className="page-lede">
             Log calories and macros without saving a food to your library.
           </p>
+          <AiFoodAssist
+            onApply={(draft) => {
+              setQuickName(draft.name);
+              setQuickKcal(String(draft.nutrients.kcal));
+              setQuickProtein(String(draft.nutrients.protein));
+              setQuickCarbs(String(draft.nutrients.carbs));
+              setQuickFat(String(draft.nutrients.fat));
+              setError('');
+            }}
+          />
           <form className="form" onSubmit={handleQuickSubmit} noValidate>
             <label className="field">
               <span className="field-label">Label (optional)</span>

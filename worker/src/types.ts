@@ -15,7 +15,8 @@ export type FoodDTO = {
   servingLabel: string;
   servingGrams?: number;
   nutrients: Nutrients;
-  source: 'off' | 'usda';
+  source: 'off' | 'usda' | 'ai';
+  category?: string;
   createdAt: number;
 };
 
@@ -67,6 +68,7 @@ export type Env = {
   AI_DAILY_PARSE?: string;
   AI_DAILY_CHAT?: string;
   AI_DAILY_RECIPE?: string;
+  AI_DAILY_FOODS?: string;
   AI_MONTHLY_REQUEST_CAP?: string;
   TEXTBELT_API_KEY?: string;
   TEXTBELT_BASE_URL?: string;

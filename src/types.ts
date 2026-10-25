@@ -46,7 +46,7 @@ export const FOOD_CATEGORY_LABELS: Record<FoodCategory, string> = {
   condiments: 'Sauces & extras'
 };
 
-export type FoodSource = 'seed' | 'custom' | 'off' | 'usda' | 'recipe';
+export type FoodSource = 'seed' | 'custom' | 'off' | 'usda' | 'recipe' | 'ai';
 
 export type Food = {
   id: string;
@@ -329,7 +329,8 @@ export const FOOD_SOURCE_LABELS: Record<FoodSource, string> = {
   custom: 'custom',
   off: 'Open Food Facts',
   usda: 'USDA',
-  recipe: 'recipe'
+  recipe: 'recipe',
+  ai: 'AI estimate'
 };
 
 export const DEFAULT_REMINDERS: Reminder[] = [
@@ -348,7 +349,7 @@ export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
 
 export const DEFAULT_PREFERENCES: Preferences = {
   trackingStyle: 'detailed',
-  photoLogging: false,
+  photoLogging: true,
   textLogging: true,
   aiChat: false,
   recipeIdeas: false,

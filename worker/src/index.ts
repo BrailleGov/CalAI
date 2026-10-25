@@ -4,6 +4,7 @@ import {
   AiError,
   analyzeMealImage,
   chatWithCoach,
+  discoverFoods,
   parseMealDescription,
   recipeIdea
 } from './ai';
@@ -18,6 +19,7 @@ import { sha256Hex } from './crypto';
 import { dedupeFoods, rankFoods } from './normalize';
 import { lookupOffBarcode, searchOff } from './providers/off';
 import { searchUsda } from './providers/usda';
+import { searchSharedFoods } from './sharedFoods';
 import {
   SmsServiceError,
   deleteSmsPrefs,
@@ -208,6 +210,44 @@ async function handleSearch(
     ...headers,
     'Cache-Control': 'public, max-age=300'
   });
+}
+
+async function handleSharedLibrary(
+  request: Request,
+  env: Env,
+  headers: Record<string, string>
+): Promise<Response> {
+  const url = new URL(request.url);
+  const query = (url.searchParams.get('q') ?? '').trim();
+  const limit = Math.min(
+    30,
+    Math.max(1, Number(url.searchParams.get('limit') ?? '12') || 12)
+  );
+
+  if (query.length < 2) {
+    return errorResponse('Search for at least two characters.', 400, headers);
+  }
+  if (query.length > 120) {
+    return errorResponse('That search is too long.', 400, headers);
+  }
+
+  const ip = request.headers.get('CF-Connecting-IP');
+  if (!(await checkRateLimit(env, ip))) {
+    return errorResponse('Daily search limit reached. Try again tomorrow.', 429, headers);
+  }
+
+  const foods = await searchSharedFoods(env, query, limit);
+  return json({ foods, sources: ['ai'], cached: false }, 200, headers);
+}
+
+async function handleFoodDiscovery(
+  request: Request,
+  env: Env,
+  headers: Record<string, string>
+): Promise<Response> {
+  const body = await readJson(request, 8_000);
+  const result = await discoverFoods(env, request, body);
+  return json(result, 200, headers);
 }
 
 async function handleBarcode(
@@ -535,6 +575,7 @@ export default {
             ok: true,
             search: true,
             ai: Boolean(env.DEEPSEEK_API_KEY),
+            sharedFoods: Boolean(env.DB),
             sync: Boolean(env.DB && env.DATA_ENC_KEY),
             sms: Boolean(env.TEXTBELT_API_KEY && env.DB && env.DATA_ENC_KEY),
             push: Boolean(
@@ -548,6 +589,14 @@ export default {
 
       if (request.method === 'GET' && url.pathname === '/v1/foods/search') {
         return await handleSearch(request, env, ctx, headers);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/v1/foods/library') {
+        return await handleSharedLibrary(request, env, headers);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/foods/discover') {
+        return await handleFoodDiscovery(request, env, headers);
       }
 
       const barcodeMatch = /^\/v1\/foods\/barcode\/(\d{8,14})$/.exec(url.pathname);

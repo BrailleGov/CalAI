@@ -14,16 +14,17 @@ for the technical design before starting work.
 
 - Mobile-first calorie tracker PWA, local-first, public repo, deployed from `main` by GitHub
   Actions.
-- v0.3 adds expanded onboarding/personalization, ≈220 seed foods with categories, AI photo and
-  text logging, an AI coach, a curated/AI recipe book, encrypted D1 cloud backup, and
-  outbound-only Textbelt SMS.
-- The Cloudflare Worker is **deployed** with KV + D1, D1 migrations applied, and all runtime
-  secrets set (DeepSeek, Textbelt, `DATA_ENC_KEY`, VAPID). `/health` reports
-  `search/ai/sync/sms/push` all true.
+- v0.3 adds expanded onboarding/personalization, ≈220 seed foods with categories, camera-first
+  AI photo and text logging, an AI coach, a curated/AI recipe book, a shared AI food library,
+  encrypted D1 cloud backup, and outbound-only Textbelt SMS reminders (the only reminder
+  channel).
+- The Cloudflare Worker is **deployed** with KV + D1, migrations `0001`/`0002` applied, and all
+  runtime secrets set (DeepSeek, Textbelt, `DATA_ENC_KEY`, VAPID). `/health` reports
+  `search/ai/sharedFoods/sync/sms/push` all true.
 - The Pages workflow runs the local-first suite, then rebuilds with `VITE_API_BASE` and the
-  public VAPID key, runs the configured-AI suite, and deploys that bundle. AI, cloud backup,
-  SMS, push, and server-cached search are active in production; the diary stays local-first and
-  offline-capable.
+  public VAPID key, runs the configured-AI suite, and deploys that bundle. AI, the shared food
+  library, cloud backup, SMS, and server-cached search are active in production; the diary
+  stays local-first and offline-capable. Push is dormant.
 - DeepSeek and Textbelt keys were provided during this session and pasted into chat. They are
   in the gitignored `worker/.dev.vars` locally and set as Wrangler secrets for production.
   Rotate both, then update `.dev.vars` and run `wrangler secret put` again.
@@ -45,6 +46,8 @@ v0.3.0 (live):
 - **Settings.** Personalization summary plus an edit sheet for goals, body stats, target
   weight, muscle focus, logging style, AI shortcuts, diet, cuisines, and avoid list. Daily
   targets remain separately editable. AI consent can be withdrawn.
+- **Camera-first logging.** Meal add buttons and the primary quick action open AI camera
+  logging; manual search and barcode remain one tap away.
 - **AI photo logging.** DeepSeek vision, on-device downscale/EXIF strip, multiple items,
   confidence labels, editable grams/macros, local-library matching, optional save-to-library,
   and a final confirmation before writing.
@@ -57,17 +60,21 @@ v0.3.0 (live):
   filtering, personalized ordering, AI “picks for you”, AI generation with review, and saving
   to the personal recipe list. User recipes gained method instructions.
 - **Food library.** Expanded to ≈220 foods with categories and browse chips. AI matches
-  recognised foods to this library.
+  recognised foods to this library. Search also consults a D1-backed shared library, then asks
+  DeepSeek for 4–6 matches and stores them for every device. Results stream in with a live
+  finding indicator. New custom foods and quick adds can be filled from a photo or description.
 - **Cloud backup.** Optional device-scoped encrypted snapshots in D1 (AES-GCM, 1 MB cap), auto
   upload after changes while enabled, manual restore/delete, no account.
-- **SMS.** Textbelt outbound reminders with consent, encrypted phone, quiet hours, per-day cap,
-  dedupe, test text, and easy off. Messages never include calories or foods.
+- **SMS-only reminders.** The in-app banner, `.ics` export, and push UI were removed. Settings
+  → SMS reminders now owns the meal schedule, quiet hours, phone, consent, preview, test text,
+  and easy off. Messages never include calories or foods.
 - **Worker security.** Device token hashes, bearer auth for sync/SMS, D1 schema, AES-GCM helper,
   AI quotas, monthly cap, image magic-byte validation, output clamping, no content logging.
 - **Schema v3.** Adds `preferences`, `sms`, `cloudSync`, `chatMessages`; recipes gain
   description/instructions/tags/source; foods gain optional category; profile gains optional
   target weight and muscle focus. v1/v2 documents and backups migrate automatically.
-- **Tests.** 88 unit tests and 34 Playwright tests pass; axe 0 A/AA violations on new screens.
+- **Tests.** 86 unit tests and 34 local-first Playwright tests pass (plus the configured-AI
+  test against a mocked Worker); axe 0 A/AA violations on new screens.
 
 ## Storage details
 
@@ -76,9 +83,8 @@ v0.3.0 (live):
 | `calai:v1` | localStorage | Zustand persist document (schema v3) |
 | `calai:legacy-checked` | localStorage | One-time IndexedDB recovery attempted |
 | `calai-theme` | localStorage | Resolved theme for the pre-hydration script |
-| `calai:device` | localStorage | Random device ID for push/search/auth |
+| `calai:device` | localStorage | Random device ID for search/auth/quotas |
 | `calai:sync-token` | localStorage | Server-issued bearer token for sync/SMS; never exported |
-| `calai:reminder-dismissed:YYYY-MM-DD:meal` | localStorage | Per-day banner dismissal |
 
 Schema v3 defaults AI photo/coach/recipe shortcuts to off and offline text matching to on.
 AI consent is null until the user opts in. Text logging uses the offline matcher without
@@ -95,7 +101,7 @@ trust boundary as the diary); the server copy is AES-GCM encrypted.
 cd D:\Projects\CalAI
 npm ci
 npm run dev        # http://localhost:5173/CalAI/
-npm test           # 88 unit tests
+npm test           # 86 unit tests
 npm run typecheck
 npm run build      # dist/, deployed by CI
 npm run test:e2e   # build + 34 Playwright tests
@@ -123,30 +129,35 @@ npx wrangler dev
 
 ## Verification status
 
-- 88 unit tests: nutrition/target math, dates, search, backup validation and v1/v2→v3
-  migration, legacy state parsing, recipes, curated recipe integrity, reminders and `.ics`,
-  remote OFF parsing, preferences, local text parsing, image sizing, assistant context, SMS
-  helpers, and Worker normalization/AI/SMS.
+- 86 unit tests: nutrition/target math, dates, search, backup validation and v1/v2→v3
+  migration, legacy state parsing, recipes, curated recipe integrity, remote OFF parsing,
+  preferences, local text parsing, image sizing, assistant context, SMS helpers, shared AI food
+  normalization, and Worker normalization/AI/SMS.
 - 35 Playwright tests on Chromium at 390 × 844. The default local-first build ran 34 passing
   (configured-AI test skipped); the Worker-enabled build ran the remaining
   `e2e/ai-configured.spec.ts` test against a mocked Worker. Coverage includes onboarding (all
   four steps, imperial/metric), logging, quick add, custom foods, favorites, edit/delete,
   export/import, malformed imports, reset, theme persistence, scroll reset, Escape/dialog
   behavior, offline reload, blocked localStorage, blocked IndexedDB, corrupt state, legacy IDB
-  recovery, online search success/failure, barcode, recipe creation/logging, curated recipe
-  detail/save, offline text logging, water, weight, reminders + `.ics`, AI/assistant setup and
-  configured states, cloud/SMS setup states, horizontal overflow at 360/390 px, and axe scans.
+  recovery, online search success/failure, shared AI food discovery, barcode, recipe
+  creation/logging, curated recipe detail/save, offline text logging, water, weight, SMS-only
+  settings, AI/assistant setup and configured states, cloud/SMS setup states, horizontal
+  overflow at 360/390 px, and axe scans.
 - axe-core: 0 WCAG 2.0/2.1/2.2 A/AA violations across onboarding (including personalization),
-  Today, add/edit sheets, foods, recipes, curated detail, history, settings, reminders,
+  Today, add/edit sheets, foods, recipes, curated detail, history, settings (including SMS),
   barcode, AI result sheet, and assistant.
 - Layout: no horizontal overflow at 360/390 px on Today, Foods, Recipes, Discover, History,
   Settings, and Assistant.
-- Bundle: initial JS 117.1 KB gzip + 2.4 KB workbox window; CSS 8.9 KB gzip; lazy ZXing chunk
-  108.7 KB gzip. PWA precache 17 entries (867.4 KiB).
+- Bundle: initial JS 117.4 KB gzip + 2.4 KB workbox window; CSS 9.4 KB gzip; lazy ZXing chunk
+  108.7 KB gzip. PWA precache 17 entries (874.1 KiB).
 - Deployed Worker verification (2026-10-25, HTTP through
   `https://calai-api.braille.workers.dev`):
-  - `/health` returned `search/ai/sync/sms/push` all true; CORS returned the Pages origin.
+  - `/health` returned `search/ai/sharedFoods/sync/sms/push` all true; CORS returned the Pages
+    origin.
   - `/v1/foods/search?q=oat milk` returned four Open Food Facts foods via the KV path.
+  - `POST /v1/foods/discover` for “paneer” returned six AI foods and stored them in
+    `shared_foods`; `GET /v1/foods/library?q=paneer` then returned the same six, and a second
+    discover call returned `cached: true` without another model request.
   - `/v1/auth/register` issued a 43-character token; encrypted `/v1/sync` PUT → GET round-tripped
     the marker; DELETE succeeded; GET then returned 404.
   - DeepSeek `deepseek-flash` text parse returned `Eggs` and `Toast`; the coach answered with a
@@ -158,19 +169,20 @@ npx wrangler dev
     a grounded coach reply (“0 diary entries … last 7 days”).
   - The live Pages build loaded the v0.3 onboarding in a fresh browser; from the Pages origin
     `/health` returned all capabilities true (CORS OK), settings showed active cloud-backup
-    controls and the SMS phone field with no “not configured” notices, and the AI sheet showed
-    the consent gate.
+    controls and the SMS schedule/phone fields with no “not configured” notices, and the AI sheet
+    showed the consent gate.
   - Found and fixed a routing bug: handlers were returned without `await`, so thrown
     `AiError`/`SyncError`/`SmsServiceError` values escaped the router catch and became Cloudflare
     error 1101. All route handlers now `await` and error statuses map correctly (verified with a
     non-food image returning 422 and its message).
 - Test rows created during smoke tests were deleted from D1; `devices`, `sync_snapshots`, and
-  `sms_prefs` are empty.
+  `sms_prefs` are empty. The shared food library retains the six real paneer entries from the
+  endpoint smoke test.
 - Textbelt quota remains 192 from the earlier consented test; no new SMS was sent during the
   deployment session.
-- Not run: installed-PWA push/notifications, physical camera, SMS cron/quiet-hours/opt-out
-  delivery, USDA live calls, iOS/Android device pass, Lighthouse on v0.3, and local `wrangler
-  dev` (workerd still fails on this Windows/Node 20 machine).
+- Not run: physical camera, SMS cron/quiet-hours/opt-out delivery, USDA live calls,
+  iOS/Android device pass, Lighthouse on v0.3, shared-food accuracy review, and local
+  `wrangler dev` (workerd still fails on this Windows/Node 20 machine). Push is dormant.
 
 ## Known issues and gaps
 
@@ -178,10 +190,11 @@ npx wrangler dev
    consented test and quota moved 193 → 192, but cron delivery, quiet hours, the per-day cap,
    provider failure handling, and opt-out still need a consented number. Recipient receipt is
    unconfirmed.
-2. **Physical camera and installed PWA** remain untested, including Web Push on iOS/Android.
-   Manual barcode and the push subscription endpoint are covered by tests.
+2. **Physical camera and installed PWA** remain untested. Manual barcode and the dormant push
+   subscription endpoint are covered by tests.
 3. **AI eval set missing.** Live smoke tests passed, but the planned 50-photo/30-question eval,
-   unsafe-output review, and cost-per-accepted-log measurement are still required.
+   unsafe-output review, and cost-per-accepted-log measurement are still required. The shared
+   AI food library has no human review and needs an accuracy sample before public launch.
 4. **AI abuse protection is quota-only.** Endpoints are public with device/IP quotas and a
    monthly cap. Add Turnstile or accounts before public scale.
 5. **Cloud sync is last-write-wins.** No merge, no account recovery. Losing localStorage
@@ -206,21 +219,21 @@ npx wrangler dev
 
 P0 — finish v0.3 verification:
 
-1. Test the installed PWA on physical iPhone and Android: camera, offline logging, push, SMS
-   opt-in, and storage eviction behavior.
+1. Test the installed PWA on physical iPhone and Android: camera-first logging, shared food
+   search, offline logging, SMS opt-in, and storage eviction behavior.
 2. Run a consented SMS end-to-end test on the deployed Worker: consent → save → test text →
    cron delivery → quiet hours → opt-out; confirm receipt and delete the row.
 3. Rotate the DeepSeek/Textbelt keys and update the Worker secrets.
 
 P1 — v0.3.x polish:
 
-- Formal AI eval set, cost measurement, and budget alerts.
+- Formal AI eval set, shared-food accuracy sample, cost measurement, and budget alerts.
 - Lighthouse/performance pass on the larger v0.3 bundle.
 - “Update available” service worker prompt.
 - Cloud sync conflict strategy or explicit “replace device” flow.
 - Recipe editing for instructions in the card UI (currently via the recipe form).
 - Remote-food cache management and localStorage quota UI.
-- Verify Web Push on installed PWAs and add an unsubscribe cleanup check.
+- Remove or re-enable the dormant Web Push endpoints and service-worker handlers.
 - Set up a Node 22 environment for `wrangler dev` and Worker HTTP integration tests.
 
 P2 — v1.0:
@@ -235,17 +248,19 @@ P2 — v1.0:
 ```text
 Resume CalAI at D:\Projects\CalAI (live: https://braillegov.github.io/CalAI/, repo:
 https://github.com/BrailleGov/CalAI). It is a mobile-first local-first calorie tracker PWA.
-v0.3.0 is deployed: expanded personalization onboarding, ≈220 seed foods, DeepSeek photo/text
-logging, AI coach, curated/AI recipe book, schema v3, encrypted D1 cloud backup, outbound
-Textbelt SMS, and Web Push. The Pages build uses VITE_API_BASE=https://calai-api.braille.workers.dev;
-the Worker has KV + D1, all secrets, and migrations applied. First read PLAN.md,
-docs/architecture.md, and NOTES.md, then inspect the repo and the live site. Run npm ci, npm
-test, npm run typecheck, npm run test:e2e, and npm run build.
+v0.3.0 is deployed: expanded personalization onboarding, ≈220 seed foods, camera-first
+DeepSeek photo/text logging, a shared AI food library, AI coach, curated/AI recipe book, schema
+v3, encrypted D1 cloud backup, and SMS-only Textbelt reminders. The Pages build uses
+VITE_API_BASE=https://calai-api.braille.workers.dev; the Worker has KV + D1, all secrets, and
+migrations 0001/0002 applied. First read PLAN.md, docs/architecture.md, and NOTES.md, then
+inspect the repo and the live site. Run npm ci, npm test, npm run typecheck, npm run test:e2e,
+and npm run build.
 
-Next: test the installed PWA on physical iOS/Android (camera, offline logging, push, storage
-eviction), run a consented SMS consent → test → cron delivery → quiet hours → opt-out check on
-the deployed Worker, confirm receipt, then rotate the DeepSeek and Textbelt keys and update the
-Wrangler secrets. Add a formal AI eval, run Lighthouse on the v0.3 bundle, and update docs with
+Next: test the installed PWA on physical iOS/Android (camera-first logging, shared food search,
+offline logging, SMS opt-in, storage eviction), run a consented SMS consent → test → cron
+delivery → quiet hours → opt-out check on the deployed Worker, confirm receipt, then rotate the
+DeepSeek and Textbelt keys and update the Wrangler secrets. Sample the shared AI food library
+for accuracy, add a formal AI eval, run Lighthouse on the v0.3 bundle, and update docs with
 results.
 
 Guardrails: keep the diary local-first and offline; AI and SMS are opt-in; never log health

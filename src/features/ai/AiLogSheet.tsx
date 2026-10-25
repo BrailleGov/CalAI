@@ -21,6 +21,7 @@ import type { AiFoodItem } from '../../lib/ai';
 import {
   IconCamera,
   IconChevronLeft,
+  IconSearch,
   IconSparkles,
   IconTrash
 } from '../../components/icons';
@@ -443,6 +444,12 @@ export function AiLogSheet({
           <IconSparkles size={16} /> Describe
         </button>
       </div>
+
+      {onManualSearch ? (
+        <button type="button" className="back-link manual-search-link" onClick={onManualSearch}>
+          <IconSearch size={15} /> Search or scan a barcode instead
+        </button>
+      ) : null}
 
       {!AI_CONFIGURED ? (
         <div className="ai-notice" role="status">

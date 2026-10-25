@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Food, FoodCategory } from '../../types';
 import {
   FOOD_CATEGORIES,
@@ -14,10 +14,13 @@ import type { FoodFormValues } from './FoodForm';
 import { createId } from '../../lib/id';
 import { rankFoods } from '../../lib/search';
 import { formatNumber } from '../../lib/format';
+import { AiConsentInline } from '../../components/AiConsentInline';
+import { useFoodDiscovery } from './useFoodDiscovery';
 import {
   IconPencil,
   IconPlus,
   IconSearch,
+  IconSparkles,
   IconStar,
   IconTrash
 } from '../../components/icons';
@@ -31,6 +34,7 @@ export function FoodsPage() {
   const addCustomFood = useAppStore((state) => state.addCustomFood);
   const updateCustomFood = useAppStore((state) => state.updateCustomFood);
   const deleteCustomFood = useAppStore((state) => state.deleteCustomFood);
+  const cacheRemoteFoods = useAppStore((state) => state.cacheRemoteFoods);
   const toast = useToast();
 
   const [query, setQuery] = useState('');
@@ -38,6 +42,17 @@ export function FoodsPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Food | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [discoverRequested, setDiscoverRequested] = useState(false);
+  const discovery = useFoodDiscovery(
+    query,
+    discoverRequested && query.trim().length >= 2
+  );
+
+  useEffect(() => {
+    if (discovery.foods.length > 0) {
+      cacheRemoteFoods(discovery.foods);
+    }
+  }, [cacheRemoteFoods, discovery.foods]);
 
   const allFoods = useMemo(
     () => [...customFoods, ...remoteFoods, ...SEED_FOODS],
@@ -115,11 +130,56 @@ export function FoodsPage() {
         <span className="visually-hidden">Search the food library</span>
         <input
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setDiscoverRequested(false);
+          }}
           placeholder="Search foods…"
           autoComplete="off"
         />
       </label>
+
+      {query.trim().length >= 2 && discovery.aiConfigured ? (
+        <div className="discovery-bar">
+          {!discovery.aiConsent ? (
+            <AiConsentInline
+              action="Enable AI food search"
+              message="AI can add more foods to the shared library from your search words."
+              onEnabled={() => setDiscoverRequested(true)}
+            />
+          ) : discovery.status === 'idle' ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              onClick={() => setDiscoverRequested(true)}
+            >
+              <IconSparkles size={15} /> Find more with AI
+            </button>
+          ) : null}
+
+          {discovery.status === 'searching' || discovery.status === 'finding' ? (
+            <p className="finding-status" role="status">
+              <span className="finding-dot" aria-hidden="true" />
+              {discovery.status === 'finding'
+                ? 'AI is adding more foods to the shared library…'
+                : 'Finding shared foods…'}
+            </p>
+          ) : null}
+
+          {discovery.status === 'error' ? (
+            <div className="online-error" role="status">
+              <p>{discovery.error}</p>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={discovery.retry}
+              >
+                Try again
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="chip-row category-chips" aria-label="Food categories">
         <button

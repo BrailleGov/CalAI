@@ -1,8 +1,10 @@
 # CalAI — product plan
 
 Status: **v0.3.0 is live (alpha).** The Cloudflare Worker is deployed with KV, D1, all runtime
-secrets, and VAPID keys, and the Pages build injects `VITE_API_BASE`. Remaining release work is
-physical-device verification, an end-to-end SMS delivery check, and the formal AI eval.
+secrets, and VAPID keys, and the Pages build injects `VITE_API_BASE`. AI, the shared food
+library, SMS, cloud backup, and cached search are active; push endpoints are dormant. Remaining
+release work is physical-device verification, an end-to-end SMS delivery check, and the formal
+AI eval.
 
 Last updated: 2026-10-25
 Live: <https://braillegov.github.io/CalAI/>
@@ -42,7 +44,7 @@ and how CalAI covers it.
 | Barcode scanning | Yes | BarcodeDetector + lazy ZXing + manual entry | **v0.2** |
 | Recipes and multi-ingredient meals | Yes | Recipe builder with servings | **v0.2** |
 | Weight logging | Yes | Weight + trend line, 7-day average | **v0.2** |
-| Reminders | Yes (push) | In-app + `.ics` live; Web Push code ready behind config | **v0.2** |
+| Reminders | Yes (push) | SMS-only opt-in schedule, quiet hours, test text | **v0.3** |
 | Water and exercise | Yes | Water quick add live; exercise still out of the budget | **v0.2** |
 | Photo food recognition | Common in AI apps | Camera/upload → candidates → confirm | **v0.3** |
 | Natural-language logging | Emerging | "Two eggs and toast" → draft entries → confirm | **v0.3** |
@@ -114,9 +116,9 @@ Shipped:
 - **Weight and water.** Weight upsert per day, latest value, 7-day average, SVG trend line,
   and delete-with-confirmation. Water quick add (+250/+500 ml or +8/+16 oz), adjustable goal,
   progress bar, and undo. Exercise remains out of the calorie budget.
-- **Reminders.** Off by default. Per-meal times, quiet hours, an in-app banner during a
-  90-minute window, and a daily `.ics` download. Web Push client + Worker subscribe/cron
-  handlers are implemented but inactive until `VITE_API_BASE` and VAPID keys are configured.
+- **Reminders (superseded in v0.3).** v0.2 shipped per-meal times, quiet hours, an in-app
+  banner, and a daily `.ics` download. v0.3 removes those reminder surfaces; all reminders are
+  now opt-in SMS managed in Settings.
 - **Storage.** Schema v2 on the same synchronous localStorage document. v0.1/v0.1.1 state and
   backups migrate automatically; no IndexedDB boot gate was reintroduced.
 - **Testing.** The ad-hoc Playwright scripts are now a committed suite (30 tests) and run in
@@ -135,7 +137,7 @@ v0.2 acceptance check:
 - Logging from online search or barcode works on a 390 px viewport and the food is reusable
   offline after logging.
 - Recipes produce per-serving values and do not rewrite past entries.
-- Weight/water persist across reloads; reminder banner and `.ics` work with no network.
+- Weight/water persist across reloads; reminders are SMS-only and remain off until opted in.
 - A blocked network, blocked storage, or blocked IndexedDB never prevents the local diary
   from opening.
 - axe-core reports 0 WCAG 2.1/2.2 A/AA violations on all main screens and open sheets.
@@ -165,6 +167,11 @@ Shipped:
   foods, and requires confirmation before logging.
 - **Natural-language logging.** DeepSeek parses text into editable items; a conservative
   offline matcher handles simple phrases without a network or AI consent.
+- **Shared AI food library.** Searches check a D1-backed shared library, then ask DeepSeek for
+  several matching foods and store them for every device. Results appear progressively with a
+  live finding indicator. New foods and quick adds can also be prefilled by photo or text.
+- **Camera-first logging.** The meal add button and primary quick action open AI camera logging;
+  manual search and barcode remain one tap away.
 - **AI coach.** Grounded in locally computed 7/14/30-day aggregates, preferences, weight, and
   water; answers cite the window, show suggestions, and can propose entries that only log
   after explicit confirmation.
@@ -173,11 +180,12 @@ Shipped:
   method steps.
 - **Expanded food library.** ≈220 seed foods with categories and browseable filters.
 - **Encrypted cloud backup.** Device-scoped D1 snapshots encrypted with AES-GCM; no account.
-- **Outbound SMS reminders.** Textbelt integration with consent, quiet hours, dedupe, caps,
-  encrypted phone storage, and “replies are not monitored” copy.
+- **SMS-only reminders.** The in-app banner, calendar export, and push UI were removed. The
+  SMS section owns the meal schedule, quiet hours, consent, phone, preview, and test text;
+  delivery uses Textbelt with dedupe, caps, and encrypted phone storage.
 - **Security.** Server-side DeepSeek/Textbelt keys, device token hashes, typed D1 access,
   request caps, image validation, output sanitization, and no content logging.
-- **Testing.** 88 unit tests and 34 Playwright tests, plus a configured-AI Playwright suite
+- **Testing.** 86 unit tests and 34 Playwright tests, plus a configured-AI Playwright suite
   that passed against mocked Worker responses when built with `VITE_API_BASE`. Includes axe
   scans of the new screens.
 
@@ -185,7 +193,7 @@ Deployment completed on 2026-10-25:
 
 - Worker `calai-api` deployed at <https://calai-api.braille.workers.dev> with KV `CALAI_CACHE`,
   D1 `calai`, migrations applied, and secrets for DeepSeek, Textbelt, `DATA_ENC_KEY`, and
-  VAPID. `/health` reports search, AI, sync, SMS, and push as available.
+  VAPID. `/health` reports search, AI, sharedFoods, sync, SMS, and push as available.
 - Pages CI now runs the local-first suite, rebuilds with `VITE_API_BASE` and the public VAPID
   key, runs the configured-AI suite, and deploys that bundle.
 - Verified through live HTTP: CORS, KV-cached Open Food Facts search, device registration,
@@ -201,7 +209,7 @@ Not yet verified / deferred:
 
 - SMS is provider-accepted (quota 193 → 192 on an earlier consented test) but cron delivery,
   quiet hours, cap handling, opt-out, and carrier receipt need a consented end-to-end run.
-- Physical iOS/Android camera, installed-PWA push, and storage-eviction behavior are untested.
+- Physical iOS/Android camera and storage-eviction behavior are untested; push is dormant.
 - No formal AI eval or cost measurement; abuse protection is quota-only.
 - No accounts/sync merge; cloud backup is last-write-wins.
 - USDA is unconfigured and untested live; Voice dictation is deferred.
@@ -214,12 +222,13 @@ v0.3 acceptance check:
 - AI photo/text output is editable, confidence-labelled, and never logged without confirmation.
 - The coach uses local aggregates only and proposes writes with a confirm step.
 - Recipe book, saved recipes, and AI recipes produce per-serving nutrition and log to a meal.
-- SMS is outbound only, consent-gated, deduplicated, and excludes health values.
+- SMS is the only reminder channel, outbound only, consent-gated, deduplicated, and excludes
+  health values.
 - Cloud snapshots and phone numbers are encrypted at rest and device-scoped.
 - 360/390 px layouts do not overflow; axe reports 0 A/AA violations; initial JS stays under
   200 KB gzip.
 
-Verified on 2026-10-25: 88 unit tests; 35 Playwright tests (34 in the local-first build, the
+Verified on 2026-10-25: 86 unit tests; 35 Playwright tests (34 in the local-first build, the
 configured-AI test against a mocked Worker); axe 0 violations on new screens; no horizontal
 overflow; initial JS 117.1 KB gzip, CSS 8.9 KB gzip. Live deployment checks listed above
 passed, including a real banana photo. Textbelt accepted one consented test text; quota moved
@@ -292,20 +301,22 @@ passed, including a real banana photo. Textbelt accepted one consented test text
 
 ## 6. Reminders
 
-Two tiers, because browsers cannot reliably wake a closed PWA without push:
+Reminders are **SMS only** as of v0.3. The in-app banner, calendar export, and push UI were
+removed so there is one clear channel and one place to manage it.
 
-1. **v0.2 local tier:** in-app reminder banner, notification while the app is open, and
-   `.ics` export for meal reminders. Honest about the limitation.
-2. **v0.2 push tier:** Web Push with VAPID from a Cloudflare Worker cron (5-minute
-   resolution). Works for installed PWAs on Android/Chromium; iOS 16.4+ supports it for
-   installed web apps, subject to permission.
-   - Store only: random device ID, push subscription, timezone, reminder times, enabled flags.
-   - Payloads contain no food or calorie data ("Time to log lunch"), deep-link to the meal.
-   - Quiet hours, per-reminder toggles, one-tap unsubscribe, automatic cleanup of dead
-     subscriptions.
-   - Denied permission falls back to in-app prompts; no nagging.
+- Off by default. The Settings → SMS reminders section owns the meal schedule, quiet hours,
+  phone number, explicit consent, message preview, and a one-per-day test text.
+- Outbound only via Textbelt from a Worker cron (5-minute resolution). Messages contain only a
+  meal name and “replies are not monitored”; no calories, foods, or health values.
+- Quiet hours, per-meal toggles, four texts per device per day, and a unique
+  `(device, reminder, local day)` delivery log prevent duplicate or runaway messages.
+- The phone number is encrypted at rest with `DATA_ENC_KEY` and excluded from JSON exports and
+  cloud snapshots. Turning SMS off deletes the server row.
+- No reminder is sent until the user enables the toggle, selects at least one meal time, enters
+  a number, and confirms consent.
 
-Defaults: lunch and dinner reminders off until the user opts in after logging a few meals.
+Defaults: all meal times off until the user opts in. The dormant Worker push endpoints remain
+for a future channel, but no client UI subscribes.
 
 ## 7. Metrics and quality bars
 
@@ -354,7 +365,7 @@ Remaining v0.3 verification is physical-device and SMS delivery testing plus the
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Browser limits on background reminders | Missed reminders | Push for installed PWAs; set expectations; `.ics` fallback |
+| Browser limits on background reminders | Missed reminders | SMS is the only channel; clear consent, quiet hours, and easy off |
 | iOS PWA storage eviction | Lost diary | Request persistent storage; export; clear backups |
 | AI nutrition errors | Wrong totals, trust loss | Confirmation, confidence, editable portions, live provider smoke tests; formal eval set still pending |
 | AI cost/abuse | Runaway bill | Worker daily quotas, monthly request cap, device/IP keys, server-side key; add Turnstile/accounts before public scale |
@@ -383,7 +394,7 @@ Settled for v0.2:
 - Remote search works directly against Open Food Facts; the Cloudflare Worker is optional
   and adds KV caching, USDA, rate caps, and push.
 - BarcodeDetector first, lazy ZXing fallback, manual entry always available.
-- Reminders off by default; in-app + `.ics` are the guaranteed tier; push is opt-in.
+- Reminders off by default; superseded in v0.3 by opt-in SMS-only reminders.
 - No accounts, no analytics, no server-side diary.
 
 Settled for v0.3:
@@ -394,6 +405,9 @@ Settled for v0.3:
   revocable in Settings.
 - Photo/text results are estimates, editable, confidence-labelled, and never auto-logged.
 - Chat context is locally computed aggregates only; write proposals require confirmation.
+- Food searches use a shared D1 library plus DeepSeek-generated foods; results are estimates,
+  shown with source labels, and require the same AI consent. No health data is sent with a
+  search, only the words the user typed.
 - Schema v3 on localStorage; Cloudflare D1 is used only for optional encrypted cloud backup,
   SMS preferences, and device auth.
 - Cloud snapshots and SMS phone numbers use AES-GCM with a server-side key. SMS is outbound
@@ -407,13 +421,15 @@ Pending before their releases:
 2. Verify SMS cron delivery, quiet hours, test text, and opt-out with a consented number, and
    confirm carrier receipt (v0.3.x).
 3. USDA FoodData Central API key and data-source attribution page (v0.3.x/v1.0).
-4. Test push on installed iOS/Android PWAs; VAPID keys and the subscription endpoint are live
-   (v0.3.x).
+4. Web Push endpoints are dormant; either remove them or re-enable a client subscription in a
+   later release. Physical installed-PWA testing now focuses on camera, offline storage, and
+   SMS permission flows.
 5. Accounts and multi-device sync design; current cloud backup is device-scoped and
    last-write-wins (v1.0).
 6. Monetisation, if any (post-alpha).
 7. Legal review, public contact address, AI disclaimer page (v1.0).
-8. Formal AI eval set, cost measurement, and budget alerts (v0.3.x).
+8. Formal AI eval set, shared-food accuracy review, cost measurement, and budget alerts
+   (v0.3.x).
 9. Design refinement beyond the current utilitarian direction (v0.3.x).
 
 Storage decision: synchronous localStorage remains in v0.3, now schema v3 (personalization,

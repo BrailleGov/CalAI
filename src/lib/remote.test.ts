@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barcodeFoodFromOff } from './remote';
+import { barcodeFoodFromOff, isRemoteSource } from './remote';
 
 describe('remote food normalisation', () => {
   it('builds a 100 g food from an Open Food Facts product', () => {
@@ -41,5 +41,11 @@ describe('remote food normalisation', () => {
         nutriments: { 'energy-kcal_100g': 5000 }
       })
     ).toBeNull();
+  });
+
+  it('treats shared AI foods as remote library entries', () => {
+    expect(isRemoteSource('ai')).toBe(true);
+    expect(isRemoteSource('off')).toBe(true);
+    expect(isRemoteSource('custom')).toBe(false);
   });
 });

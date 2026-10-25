@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { Reminder } from '../../types';
 import { MEAL_LABELS } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast';
@@ -19,6 +20,7 @@ export function SmsSettings() {
   const sms = useAppStore((state) => state.sms);
   const updateSms = useAppStore((state) => state.updateSms);
   const reminders = useAppStore((state) => state.reminders);
+  const updateReminders = useAppStore((state) => state.updateReminders);
   const toast = useToast();
 
   const [phone, setPhone] = useState(sms.phone);
@@ -36,7 +38,21 @@ export function SmsSettings() {
   }, [sms]);
 
   const activeReminders = reminders.items.filter((item) => item.enabled);
-  const hasReminders = reminders.enabled && activeReminders.length > 0;
+  const hasReminders = activeReminders.length > 0;
+  const previewMeal = MEAL_LABELS[activeReminders[0]?.meal ?? 'lunch'].toLowerCase();
+
+  function setSchedule(items: Reminder[]) {
+    updateReminders({
+      items,
+      enabled: items.some((item) => item.enabled)
+    });
+  }
+
+  function updateReminderItem(id: string, patch: Partial<Reminder>) {
+    setSchedule(
+      reminders.items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    );
+  }
 
   async function handleSave() {
     setError('');
@@ -50,7 +66,7 @@ export function SmsSettings() {
       return;
     }
     if (enabled && !hasReminders) {
-      setError('Turn on at least one meal reminder first, then save SMS preferences.');
+      setError('Turn on at least one meal reminder before enabling texts.');
       return;
     }
 
@@ -60,7 +76,10 @@ export function SmsSettings() {
         enabled,
         phone,
         consent,
-        reminders,
+        reminders: {
+          ...reminders,
+          enabled: hasReminders
+        },
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
       });
       const consentAt = consent ? Date.now() : null;
@@ -128,125 +147,174 @@ export function SmsSettings() {
     <section className="settings-section" aria-labelledby="sms-heading">
       <div className="card-head card-head-flush">
         <h2 id="sms-heading">SMS reminders</h2>
-        <span className="card-note">Outbound only</span>
+        <span className="card-note">{sms.enabled ? 'On' : 'Off'}</span>
       </div>
       <div className="card settings-card">
-        {!SMS_CONFIGURED ? (
-          <p className="fine-print">
-            SMS is not configured in this build. Deploy the Worker with a Textbelt key and set{' '}
-            <code>VITE_API_BASE</code> to enable outbound reminder texts. No phone number is
-            collected until then.
-          </p>
-        ) : (
-          <>
-            <p className="fine-print">
-              CalAI can text you the same meal reminders you already schedule. Messages are
-              outbound only: <strong>replies are not monitored</strong>. Frequency follows your
-              enabled reminders (up to four per day). Message and data rates may apply.
+        <div className="settings-card-body">
+          {!SMS_CONFIGURED ? (
+            <p className="settings-copy">
+              SMS is not configured in this build. Deploy the Worker with a Textbelt key and set{' '}
+              <code>VITE_API_BASE</code> to enable outbound reminder texts. No phone number is
+              collected until then.
             </p>
-
-            <ToggleRow
-              label="Send reminder texts"
-              description="Uses the meal times and quiet hours from Reminders."
-              checked={enabled}
-              onChange={setEnabled}
-            />
-
-            <label className="field">
-              <span className="field-label">Mobile number</span>
-              <input
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                placeholder="+1 555 123 4567"
-                inputMode="tel"
-                autoComplete="tel"
-                aria-invalid={Boolean(error)}
-              />
-              <span className="field-hint">
-                Include the country code. Stored encrypted on the server and kept out of exported
-                backups and cloud snapshots.
-              </span>
-            </label>
-
-            <label className="check-label">
-              <input
-                type="checkbox"
-                checked={consent}
-                onChange={(event) => setConsent(event.target.checked)}
-              />
-              <span>
-                I agree to receive automated CalAI reminder texts at this number. Consent is not a
-                condition of using CalAI, and I can turn this off at any time.
-              </span>
-            </label>
-
-            {!hasReminders ? (
-              <p className="fine-print">
-                No meal reminders are on yet. Turn on at least one reminder above before enabling
-                texts.
+          ) : (
+            <>
+              <p className="settings-copy">
+                All CalAI reminders are sent by text. Messages are outbound only and{' '}
+                <strong>replies are not monitored</strong>. CalAI has no in-app or push
+                reminders.
               </p>
-            ) : (
-              <p className="fine-print">
-                Active reminder times:{' '}
-                {activeReminders
-                  .map((item) => `${MEAL_LABELS[item.meal]} ${item.time}`)
-                  .join(' · ')}
-              </p>
-            )}
 
-            <div className="sms-preview" aria-label="Message preview">
-              <span className="eyebrow">Preview</span>
-              <p>{smsPreview(MEAL_LABELS[activeReminders[0]?.meal ?? 'lunch'].toLowerCase())}</p>
-            </div>
+              <div className="settings-block">
+                <ToggleRow
+                  label="Send reminder texts"
+                  description="Texts use the meal times and quiet hours below. Up to four per day."
+                  checked={enabled}
+                  onChange={setEnabled}
+                />
+              </div>
 
-            {sms.phone ? (
-              <p className="fine-print">
-                Saved number: {maskPhone(sms.phone)}
-                {sms.enabled ? ' · Reminders on' : ' · Reminders off'}
-              </p>
-            ) : null}
+              <div className="settings-block">
+                <h3 className="settings-subhead">Reminder schedule</h3>
+                <p className="settings-copy">
+                  Pick the meals you want a text for. Message and data rates may apply.
+                </p>
+                <ul className="reminder-list sms-schedule" aria-label="Meal reminder times">
+                  {reminders.items.map((item) => (
+                    <li key={item.id}>
+                      <label className="check-label">
+                        <input
+                          type="checkbox"
+                          checked={item.enabled}
+                          onChange={() =>
+                            updateReminderItem(item.id, { enabled: !item.enabled })
+                          }
+                        />
+                        <span>{MEAL_LABELS[item.meal]}</span>
+                      </label>
+                      <label className="reminder-time">
+                        <span className="visually-hidden">
+                          {MEAL_LABELS[item.meal]} reminder time
+                        </span>
+                        <input
+                          type="time"
+                          value={item.time}
+                          onChange={(event) =>
+                            updateReminderItem(item.id, { time: event.target.value })
+                          }
+                        />
+                      </label>
+                    </li>
+                  ))}
+                </ul>
 
-            {error ? (
-              <p className="field-error" role="alert">
-                {error}
-              </p>
-            ) : null}
+                <div className="field-row">
+                  <label className="field">
+                    <span className="field-label">Quiet from</span>
+                    <input
+                      type="time"
+                      value={reminders.quietStart}
+                      onChange={(event) =>
+                        updateReminders({ quietStart: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Quiet until</span>
+                    <input
+                      type="time"
+                      value={reminders.quietEnd}
+                      onChange={(event) => updateReminders({ quietEnd: event.target.value })}
+                    />
+                  </label>
+                </div>
+              </div>
 
-            <div className="settings-button-row">
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busy}
-                onClick={handleSave}
-              >
-                {busy ? 'Working…' : 'Save SMS settings'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy || !saved}
-                onClick={handleTest}
-              >
-                Send test text
-              </button>
+              <div className="settings-block">
+                <h3 className="settings-subhead">Mobile number</h3>
+                <label className="field">
+                  <span className="field-label">Number for texts</span>
+                  <input
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                    placeholder="+1 555 123 4567"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    aria-invalid={Boolean(error)}
+                  />
+                  <span className="field-hint">
+                    Include the country code. Stored encrypted on the server and kept out of
+                    exported backups and cloud snapshots.
+                  </span>
+                </label>
+
+                <label className="check-label sms-consent">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(event) => setConsent(event.target.checked)}
+                  />
+                  <span>
+                    I agree to receive automated CalAI reminder texts at this number. Consent is
+                    not a condition of using CalAI, and I can turn this off at any time.
+                  </span>
+                </label>
+              </div>
+
+              <div className="sms-preview" aria-label="Message preview">
+                <span className="eyebrow">Preview</span>
+                <p>{smsPreview(previewMeal)}</p>
+              </div>
+
               {sms.phone ? (
+                <p className="fine-print">
+                  Saved number: {maskPhone(sms.phone)}
+                  {sms.enabled ? ' · Reminders on' : ' · Reminders off'}
+                </p>
+              ) : null}
+
+              {error ? (
+                <p className="field-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
+
+              <div className="settings-button-row">
                 <button
                   type="button"
-                  className="btn btn-quiet"
+                  className="btn btn-primary"
                   disabled={busy}
-                  onClick={handleDisable}
+                  onClick={handleSave}
                 >
-                  Turn off SMS
+                  {busy ? 'Working…' : 'Save SMS settings'}
                 </button>
-              ) : null}
-            </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={busy || !saved}
+                  onClick={handleTest}
+                >
+                  Send test text
+                </button>
+                {sms.phone ? (
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    disabled={busy}
+                    onClick={handleDisable}
+                  >
+                    Turn off SMS
+                  </button>
+                ) : null}
+              </div>
 
-            <p className="fine-print">
-              Texts contain only the meal name and time. They never include calories, foods, or
-              health values. Sending stops immediately when reminders are off or you turn SMS off.
-            </p>
-          </>
-        )}
+              <p className="fine-print">
+                Texts contain only the meal name and time. They never include calories, foods, or
+                health values. Sending stops immediately when SMS is off.
+              </p>
+            </>
+          )}
+        </div>
       </div>
     </section>
   );

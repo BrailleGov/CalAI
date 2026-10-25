@@ -259,9 +259,13 @@ The Worker now stores, only when the user opts in:
 - SMS preferences: encrypted phone, consent timestamp, timezone, quiet hours,
   enabled reminder times;
 - SMS delivery log (device, reminder ID, local day, status) for deduplication;
-- rate-limit counters; plus KV search cache, push subscriptions, and push sent markers.
+- rate-limit counters; plus KV search cache, push subscriptions, and push sent markers;
+- a public `shared_foods` table (name, brand, serving, nutrition, category, search query, hit
+  count) holding AI-generated foods so a search by one device can help the next. It contains no
+  device ID and no diary content.
 
-AI prompts, photos, text, food names, and calorie values are not logged.
+AI prompts, photos, text, food names, and calorie values are not logged. AI-generated shared
+food names and nutrition are public library content, not user diary data.
 
 ### Persistence and migration (v0.1.1 → v0.3)
 
@@ -355,6 +359,8 @@ v0.2 remote search:
 | `POST /v1/ai/parse` | Text → structured items | 40/day per device+IP |
 | `POST /v1/ai/chat` | Grounded Q&A + optional proposal | 60/day per device+IP |
 | `POST /v1/ai/recipes` | Generate or rank recipes | 20/day per device+IP |
+| `GET /v1/foods/library` | Search the shared AI-generated food library | 300/day per IP |
+| `POST /v1/foods/discover` | Generate 4–6 foods, store in D1, return them | 20/day per device+IP |
 | `POST /v1/sms/prefs` | Save consent, phone, reminders | authenticated device |
 | `POST /v1/sms/test` | One test text | 1/day per device |
 | `DELETE /v1/sms/prefs` | Delete SMS preferences | authenticated device |
@@ -386,6 +392,12 @@ client.
 
 - Text parsing reuses the item schema minus the image. An offline matcher covers simple
   phrases against local foods; it never invents nutrition and reports unmatched text.
+- Food discovery runs when a search has at least two characters and AI consent is present. The
+  client first queries `/v1/foods/library`, then `/v1/foods/discover`; the Worker returns stored
+  matches immediately when it already has four or more and otherwise asks DeepSeek for 4–6
+  generic foods, clamps them, stores them in `shared_foods`, and returns them. The client
+  appends each response as it arrives and shows a live “finding items” indicator. Results are
+  labelled “AI estimate” and are cached locally only when chosen or logged.
 - Chat context is assembled on the client: goal, target weight, training focus, preferences,
   7/14/30-day totals and averages, logged days, recent food names, weight, water, and active
   reminder meals. No email, account ID, or raw entries are sent.
@@ -394,8 +406,12 @@ client.
   chip. A proposal is shown as a review card and is only written after confirmation.
 - Recipes use `POST /v1/ai/recipes` in `generate` mode (prompt, meal, servings, time,
   preferences, training focus) or `suggest` mode (curated candidate IDs + preferences).
-  Generated recipes are previewed and saved only on approval; the user can edit ingredients
+  Generated recipes are   previewed and saved only on approval; the user can edit ingredients
   and method afterwards.
+- Food search discovery uses the shared D1 library plus DeepSeek generation. The client shows
+  stored and generated matches as they arrive with a live finding indicator. AI foods carry an
+  “AI estimate” label and are cached locally only when selected. A search sends only the typed
+  words, never diary values.
 - Transcripts live locally under `chatMessages` (cap 60) with a clear-chat action.
 
 ### Safety and privacy
@@ -410,32 +426,32 @@ client.
 - Before public scale, add a formal eval set, provider budget alerts, and abuse protection
   (Turnstile or accounts). Current protection is quotas plus a server-side key.
 
-## 7. Reminders (v0.2/v0.3)
+## 7. Reminders (SMS only)
 
-Local tier (shipped):
+The in-app banner, `.ics` export, and client push subscription were removed in v0.3. All
+reminder behavior is managed in Settings → SMS reminders.
 
-- Four meal reminder times, off by default; global enable plus per-meal toggles.
-- In-app banner on Today during the 90 minutes after an enabled time. Quiet hours suppress
-  the banner and push. Dismissal is stored per day/meal in localStorage.
-- `.ics` export with one daily recurring VEVENT per enabled reminder and a 5-minute VALARM.
-  Works in any calendar with no permissions; the UI states that CalAI itself cannot wake a
-  closed browser without push.
+- Four meal times, off by default, plus quiet hours. Turning on at least one meal updates the
+  persisted schedule; the same schedule is sent with SMS preferences.
+- The section is split into padded blocks (intro, send toggle, schedule, number/consent,
+  preview, actions) rather than one dense card.
+- The client requires a country-code phone number, explicit consent, at least one meal time,
+  and a timezone. The Worker encrypts the phone with `DATA_ENC_KEY` and stores it separately
+  from diary data.
+- The cron runs every five minutes, resolves local time with `Intl.DateTimeFormat`, honors
+  quiet hours, caps delivery at four texts per device per local day, and dedupes with a unique
+  `(device_id, reminder_id, day)` row in `sms_log`.
+- Messages are outbound only, contain no food/calorie data, and say replies are not monitored.
+  Turning SMS off deletes the server row. If that request fails, the UI keeps the controls
+  visible and warns that delivery may continue.
 
-Push tier (implemented, inactive until configured):
+Dormant push tier:
 
-- VAPID keys live as Worker secrets; the client subscribes through the service worker only
-  after an explicit button press and a Notification permission grant.
-- KV stores `{ endpoint, keys, timezone, reminders[], quietStart, quietEnd, deviceId,
-  updatedAt }`. The device ID is random and unlinked to an account; no health data.
-- The Worker cron runs every 5 minutes, resolves local times with `Intl.DateTimeFormat`,
-  sends generic payloads ("Time to log dinner") with a deep link to Today, and records a
-  per-day sent marker to avoid duplicate delivery.
-- Dead subscriptions (404/410) are deleted. Unsubscribe deletes the record and the device
-  index. Payloads contain no food names or calorie values.
-- iOS requires an installed PWA and explicit permission; the UI explains when push is not
-  configured. Local reminders and `.ics` are the guaranteed fallback.
+- Worker `/v1/push/*` endpoints, KV subscription storage, VAPID secrets, cron delivery, and
+  service-worker push handlers remain in the codebase, but no client UI subscribes. They can be
+  removed or re-enabled in a later release.
 
-SMS tier (implemented, inactive until Worker + Textbelt are configured):
+SMS tier (implemented in v0.3):
 
 - Outbound only. The client collects a phone number, an explicit consent checkbox, and the
   same enabled reminder times/quiet hours; the Worker requires authenticated device ownership
@@ -538,14 +554,15 @@ The Worker sets its own CSP/CORS headers.
 
 - **Unit (Vitest):** target math, macro rounding, date keys across DST, search ranking,
   import validation and v1/v2→v3 migration, nutrient scaling, recipe totals and curated
-  integrity, reminder windows and `.ics`, OFF parsing, preferences, local NL parsing, image
-  sizing, assistant context, SMS helpers, and Worker normalization/AI/SMS.
+  integrity, OFF parsing, preferences, local NL parsing, image sizing, assistant context, SMS
+  helpers, shared AI food normalization, and Worker normalization/AI/SMS.
 - **E2E (Playwright, committed and in CI):** onboarding with personalization → log → reload
   persistence → edit → delete → export/import at 390 × 844; blocked localStorage, blocked
   IndexedDB, corrupt state, legacy IDB recovery; offline reload; online search success/failure;
-  manual barcode lookup; recipe creation/logging; curated recipe detail/save; offline text
-  logging; water and weight persistence; reminder banner and `.ics`; assistant and cloud/SMS
-  setup states; horizontal overflow at 360/390 px; axe scans in both themes.
+  AI shared food discovery in the configured build; manual barcode lookup; recipe
+  creation/logging; curated recipe detail/save; offline text logging; water and weight
+  persistence; SMS-only settings with no in-app controls; assistant and cloud/SMS setup states;
+  horizontal overflow at 360/390 px; axe scans in both themes.
 - **Accessibility:** axe-core with WCAG 2.0/2.1/2.2 A/AA tags, animations finished before
   scanning, 0 violations on all main screens and open sheets.
 - **Device pass:** iPhone Safari (installed), Android Chrome, desktop Chromium.
@@ -658,9 +675,9 @@ is deployed with the Worker, AI, SMS, cloud, and push tiers enabled.
 
 ## 17. v0.3 verification record
 
-- Unit tests: 88 passing across the v0.2 areas plus preferences normalization, local text
+- Unit tests: 86 passing across the v0.2 areas plus preferences normalization, local text
   parsing, image sizing, assistant context, curated recipe integrity, SMS helpers, AI response
-  sanitization, and Worker AI/SMS handling.
+  sanitization, shared AI food normalization, and Worker AI/SMS handling.
 - Playwright: 35 tests on Chromium at 390 × 844. The local-first build runs 34 (the
   configured-AI test is skipped); the Worker-enabled build runs
   `e2e/ai-configured.spec.ts` against a mocked Worker. Coverage includes the new onboarding
@@ -693,3 +710,25 @@ is deployed with the Worker, AI, SMS, cloud, and push tiers enabled.
   installed-PWA push, USDA live calls, physical camera, iOS/Android device pass, Lighthouse on
   the v0.3 bundle.
 - Version: v0.3.0 (deployed 2026-10-25).
+
+## 18. v0.3.1 UI and shared-food update (2026-10-25)
+
+- Camera-first logging: meal `+` opens AI photo logging with a persistent manual
+  search/barcode link; the quick-log row leads with Camera. Photo logging is on by default,
+  with the onboarding consent gate unchanged.
+- Today spacing: the quick-log panel clears the day title and meals sit 28 px below the water
+  card. Settings SMS and cloud cards use padded, separated blocks instead of one dense card.
+- Reminders are SMS only. The in-app banner, `.ics` export, push subscription UI, and their
+  reminder helpers were removed; SMS settings owns the schedule and quiet hours.
+- Shared AI food library: `shared_foods` in D1 plus `GET /v1/foods/library` and
+  `POST /v1/foods/discover`. DeepSeek returns 4–6 foods with clamped per-serving nutrition;
+  repeated queries use stored rows without another model call. The client shows a live finding
+  indicator and appends results as each request resolves.
+- AI assist: new custom foods and quick adds can be filled from a photo or a short description;
+  the user reviews and edits before saving.
+- Verification: 86 unit tests; 34 local-first Playwright tests plus the configured-AI test
+  against a mocked Worker (35 total); axe 0 A/AA violations; no horizontal overflow at 360/390
+  px. Bundle: initial JS 117.4 KB gzip, CSS 9.4 KB gzip, precache 874.1 KiB.
+- Live Worker smoke test: `POST /v1/foods/discover` for “paneer” returned six foods, stored
+  them, and `GET /v1/foods/library?q=paneer` returned the same six; a second discover call
+  returned `cached: true` without a model call. `/health` reports `sharedFoods: true`.

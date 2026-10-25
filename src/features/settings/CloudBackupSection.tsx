@@ -101,110 +101,127 @@ export function CloudBackupSection() {
         <span className="card-note">{cloudSync.enabled ? 'On' : 'Optional'}</span>
       </div>
       <div className="card settings-card">
-        <p className="fine-print">
-          An encrypted copy of your diary, recipes, and preferences can be stored on CalAI's
-          server. There is no account: this browser holds a random device key. The server stores a
-          hash of that key and encrypts the snapshot with a separate server-side secret.
-        </p>
-        <dl className="stats-list">
-          <div>
-            <dt>Status</dt>
-            <dd>{cloudSync.enabled ? 'Connected' : 'Not set up'}</dd>
-          </div>
-          <div>
-            <dt>Last backup</dt>
-            <dd>{formatSynced(cloudSync.lastSyncedAt)}</dd>
-          </div>
-        </dl>
-
-        {!SYNC_CONFIGURED ? (
-          <p className="fine-print">
-            Cloud backup is not configured in this build. Deploy the Worker with a D1 database and
-            set <code>VITE_API_BASE</code> to enable it.
+        <div className="settings-card-body">
+          <p className="settings-copy">
+            An encrypted copy of your diary, recipes, and preferences can be stored on CalAI's
+            server. There is no account: this browser holds a random device key.
           </p>
-        ) : null}
 
-        {error ? (
-          <p className="field-error" role="alert">
-            {error}
-          </p>
-        ) : null}
+          <dl className="stats-list stats-list-flush">
+            <div>
+              <dt>Status</dt>
+              <dd>{cloudSync.enabled ? 'Connected' : 'Not set up'}</dd>
+            </div>
+            <div>
+              <dt>Last backup</dt>
+              <dd>{formatSynced(cloudSync.lastSyncedAt)}</dd>
+            </div>
+          </dl>
 
-        {confirmRestore ? (
-          <div className="delete-confirm" role="alert">
-            <p>
-              Restoring from the cloud replaces this device's diary, recipes, and preferences. SMS
-              settings stay local. Export a local backup first if you are unsure.
+          {!SYNC_CONFIGURED ? (
+            <p className="fine-print">
+              Cloud backup is not configured in this build. Deploy the Worker with a D1 database
+              and set <code>VITE_API_BASE</code> to enable it.
             </p>
-            <div className="delete-actions">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => setConfirmRestore(false)}
-              >
-                Cancel
-              </button>
-              <button type="button" className="btn btn-danger" onClick={restore} disabled={busy}>
-                Restore cloud backup
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {confirmDisable ? (
-          <div className="delete-confirm" role="alert">
-            <p>Turn off cloud backup and delete the encrypted server copy?</p>
-            <div className="delete-actions">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => setConfirmDisable(false)}
-              >
-                Keep it
-              </button>
-              <button type="button" className="btn btn-danger" onClick={disable} disabled={busy}>
-                Turn off
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="settings-button-row">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy || !SYNC_CONFIGURED}
-            onClick={() => backup(!cloudSync.enabled)}
-          >
-            {busy ? 'Working…' : cloudSync.enabled ? 'Back up now' : 'Set up cloud backup'}
-          </button>
-          {cloudSync.enabled ? (
-            <>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => setConfirmRestore(true)}
-              >
-                Restore
-              </button>
-              <button
-                type="button"
-                className="btn btn-quiet"
-                disabled={busy}
-                onClick={() => setConfirmDisable(true)}
-              >
-                Turn off
-              </button>
-            </>
           ) : null}
-        </div>
 
-        <p className="fine-print">
-          {cloudSync.enabled
-            ? 'After setup, CalAI backs up quietly a few seconds after changes while the app is open and online.'
-            : 'Nothing is uploaded until you choose to set it up. The local diary remains the source of truth.'}
-        </p>
+          <p className="fine-print">
+            The server stores a hash of the device key and encrypts the snapshot with a separate
+            server-side secret. SMS settings and your phone number are never included.
+          </p>
+
+          {error ? (
+            <p className="field-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          {confirmRestore ? (
+            <div className="delete-confirm" role="alert">
+              <p>
+                Restoring from the cloud replaces this device's diary, recipes, and preferences.
+                SMS settings stay local. Export a local backup first if you are unsure.
+              </p>
+              <div className="delete-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setConfirmRestore(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={restore}
+                  disabled={busy}
+                >
+                  Restore cloud backup
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {confirmDisable ? (
+            <div className="delete-confirm" role="alert">
+              <p>Turn off cloud backup and delete the encrypted server copy?</p>
+              <div className="delete-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setConfirmDisable(false)}
+                >
+                  Keep it
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={disable}
+                  disabled={busy}
+                >
+                  Turn off
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="settings-button-row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || !SYNC_CONFIGURED}
+              onClick={() => backup(!cloudSync.enabled)}
+            >
+              {busy ? 'Working…' : cloudSync.enabled ? 'Back up now' : 'Set up cloud backup'}
+            </button>
+            {cloudSync.enabled ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={busy}
+                  onClick={() => setConfirmRestore(true)}
+                >
+                  Restore
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-quiet"
+                  disabled={busy}
+                  onClick={() => setConfirmDisable(true)}
+                >
+                  Turn off
+                </button>
+              </>
+            ) : null}
+          </div>
+
+          <p className="fine-print">
+            {cloudSync.enabled
+              ? 'After setup, CalAI backs up quietly a few seconds after changes while the app is open and online.'
+              : 'Nothing is uploaded until you choose to set it up. The local diary remains the source of truth.'}
+          </p>
+        </div>
       </div>
     </section>
   );

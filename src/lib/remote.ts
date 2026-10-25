@@ -10,7 +10,7 @@ export const API_BASE = (import.meta.env.VITE_API_BASE ?? '')
   .trim()
   .replace(/\/+$/, '');
 
-export type RemoteSource = 'off' | 'usda';
+export type RemoteSource = 'off' | 'usda' | 'ai';
 
 export type RemoteSearchResponse = {
   foods: Food[];
@@ -92,7 +92,7 @@ function sanitizeFoods(value: unknown): Food[] {
       food.name.length > 0 &&
       food.name.length <= 200 &&
       typeof food.servingLabel === 'string' &&
-      (food.source === 'off' || food.source === 'usda') &&
+      (food.source === 'off' || food.source === 'usda' || food.source === 'ai') &&
       Boolean(food.nutrients) &&
       typeof food.nutrients?.kcal === 'number' &&
       Number.isFinite(food.nutrients.kcal)
@@ -261,7 +261,8 @@ export async function searchRemoteFoods(
     };
     const sources = Array.isArray(record.sources)
       ? record.sources.filter(
-          (source): source is RemoteSource => source === 'off' || source === 'usda'
+          (source): source is RemoteSource =>
+          source === 'off' || source === 'usda' || source === 'ai'
         )
       : [];
 
@@ -344,5 +345,78 @@ export function rotateDeviceToken(): string {
 }
 
 export function isRemoteSource(source: Food['source']): boolean {
-  return source === 'off' || source === 'usda';
+  return source === 'off' || source === 'usda' || source === 'ai';
+}
+
+export type SharedFoodResponse = {
+  foods: Food[];
+  sources: RemoteSource[];
+  note?: string;
+};
+
+export async function searchSharedFoods(
+  query: string,
+  signal: AbortSignal
+): Promise<SharedFoodResponse> {
+  const trimmed = query.trim();
+  if (!API_BASE || trimmed.length < 2) {
+    return { foods: [], sources: [] };
+  }
+
+  const params = new URLSearchParams({ q: trimmed, limit: '12' });
+  const payload = await fetchJson(
+    `${API_BASE}/v1/foods/library?${params.toString()}`,
+    { signal }
+  );
+
+  if (!payload || typeof payload !== 'object') {
+    return { foods: [], sources: [] };
+  }
+
+  const record = payload as { foods?: unknown; sources?: unknown; note?: unknown };
+  return {
+    foods: sanitizeFoods(record.foods),
+    sources: Array.isArray(record.sources)
+      ? record.sources.filter(
+          (source): source is RemoteSource =>
+            source === 'off' || source === 'usda' || source === 'ai'
+        )
+      : ['ai'],
+    ...(typeof record.note === 'string' ? { note: record.note } : {})
+  };
+}
+
+export async function discoverSharedFoods(
+  query: string,
+  signal: AbortSignal
+): Promise<SharedFoodResponse> {
+  const trimmed = query.trim();
+  if (!API_BASE || trimmed.length < 2) {
+    return { foods: [], sources: [] };
+  }
+
+  const payload = await fetchJson(
+    `${API_BASE}/v1/foods/discover`,
+    {
+      method: 'POST',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CalAI-Device': getDeviceToken()
+      },
+      body: JSON.stringify({ query: trimmed })
+    },
+    45_000
+  );
+
+  if (!payload || typeof payload !== 'object') {
+    return { foods: [], sources: [] };
+  }
+
+  const record = payload as { foods?: unknown; sources?: unknown; note?: unknown };
+  return {
+    foods: sanitizeFoods(record.foods),
+    sources: ['ai'],
+    ...(typeof record.note === 'string' ? { note: record.note } : {})
+  };
 }

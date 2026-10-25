@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
 import { completeOnboarding, logSeedFood, openAddFood } from './helpers';
 
 const OFF_SEARCH = {
@@ -91,7 +90,7 @@ test.describe('v0.2 features', () => {
 
     await openAddFood(page);
     const dialog = page.getByRole('dialog');
-    await dialog.getByRole('button', { name: 'Scan barcode' }).click();
+    await dialog.getByRole('button', { name: 'Barcode' }).click();
     await dialog.getByLabel('Barcode number').fill('0123456789012');
     await dialog.getByRole('button', { name: 'Look up barcode' }).click();
     await expect(dialog.getByText('Mock barcode food')).toBeVisible();
@@ -155,37 +154,16 @@ test.describe('v0.2 features', () => {
     await expect(page.getByText('72.5 kg').first()).toBeVisible();
   });
 
-  test('enables reminders, shows the in-app banner, and exports .ics', async ({ page }, testInfo) => {
+  test('shows SMS-only reminders and no in-app reminder controls', async ({ page }) => {
     await completeOnboarding(page);
     await page.getByRole('link', { name: 'Settings', exact: true }).click();
 
-    const now = await page.evaluate(() => {
-      const date = new Date();
-      return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-    });
-
-    await page.getByRole('checkbox', { name: /In-app reminders/ }).check();
-    await page.getByRole('checkbox', { name: 'Lunch' }).check();
-    await page.getByLabel('Lunch reminder time').fill(now);
-    await page.getByLabel('Quiet from').fill('00:00');
-    await page.getByLabel('Quiet until').fill('00:00');
-
-    const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: /Download calendar/ }).click();
-    const download = await downloadPromise;
-    const path = testInfo.outputPath('calai-reminders.ics');
-    await download.saveAs(path);
-    const ics = await readFile(path, 'utf8');
-    expect(ics).toContain('BEGIN:VCALENDAR');
-    expect(ics).toContain('RRULE:FREQ=DAILY');
-    expect(ics).toContain('SUMMARY:Time to log a meal: Lunch');
+    await expect(page.getByRole('heading', { name: 'SMS reminders' })).toBeVisible();
+    await expect(page.getByText('In-app reminders')).toHaveCount(0);
+    await expect(page.getByText(/SMS is not configured in this build/)).toBeVisible();
 
     await page.getByRole('link', { name: 'Today', exact: true }).click();
-    const banner = page.getByRole('region', { name: 'Meal reminder' });
-    await expect(banner).toBeVisible();
-    await expect(banner).toContainText('Time to log lunch');
-    await banner.getByRole('button', { name: 'Dismiss reminder for today' }).click();
-    await expect(banner).toBeHidden();
+    await expect(page.getByRole('region', { name: 'Meal reminder' })).toHaveCount(0);
   });
 
   test('keeps the recipe page free of horizontal overflow', async ({ page }) => {

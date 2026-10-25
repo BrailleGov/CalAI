@@ -31,6 +31,8 @@ export async function completeOnboarding(
 
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Make it yours.' })).toBeVisible();
+  const consent = page.getByRole('checkbox', { name: /I understand AI estimates/ });
+  if ((await consent.count()) > 0) await consent.check();
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Daily numbers.' })).toBeVisible();
   await page.getByRole('button', { name: 'Start tracking' }).click();

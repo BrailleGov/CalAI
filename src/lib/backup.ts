@@ -32,7 +32,7 @@ import {
 } from './preferences';
 import { isValidDayKey } from './dates';
 
-const FOOD_SOURCES = ['seed', 'custom', 'off', 'usda', 'recipe'] as const;
+const FOOD_SOURCES = ['seed', 'custom', 'off', 'usda', 'recipe', 'ai'] as const;
 const FOOD_CATEGORY_VALUES = [
   'protein',
   'dairy',

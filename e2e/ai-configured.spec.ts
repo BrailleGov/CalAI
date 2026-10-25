@@ -115,6 +115,39 @@ test('configured AI UI works against a mocked Worker', async ({ page }) => {
       return;
     }
 
+    if (url.pathname === '/v1/foods/library') {
+      await json({ foods: [], sources: ['ai'], cached: false });
+      return;
+    }
+
+    if (url.pathname === '/v1/foods/discover') {
+      await json({
+        foods: [
+          {
+            id: 'ai-paneer-bhurji',
+            name: 'Paneer bhurji',
+            servingLabel: '1 cup (150 g)',
+            servingGrams: 150,
+            nutrients: { kcal: 300, protein: 18, carbs: 6, fat: 23 },
+            source: 'ai',
+            createdAt: Date.now()
+          },
+          {
+            id: 'ai-palak-paneer',
+            name: 'Palak paneer',
+            servingLabel: '1 bowl (250 g)',
+            servingGrams: 250,
+            nutrients: { kcal: 320, protein: 16, carbs: 12, fat: 24 },
+            source: 'ai',
+            createdAt: Date.now()
+          }
+        ],
+        sources: ['ai'],
+        note: 'Added two matches.'
+      });
+      return;
+    }
+
     if (url.pathname === '/v1/ai/recipes') {
       const body = JSON.parse(request.postData() ?? '{}') as { mode?: string };
       if (body.mode === 'suggest') {
@@ -155,7 +188,7 @@ test('configured AI UI works against a mocked Worker', async ({ page }) => {
 
   await onboardWithAi(page);
 
-  await page.getByRole('button', { name: /^Photo/ }).click();
+  await page.getByRole('button', { name: /^Camera/ }).click();
   const photoDialog = page.getByRole('dialog');
   await photoDialog
     .getByLabel('Choose a meal photo')
@@ -165,6 +198,18 @@ test('configured AI UI works against a mocked Worker', async ({ page }) => {
   await photoDialog.getByRole('button', { name: 'Breakfast', exact: true }).click();
   await photoDialog.getByRole('button', { name: 'Log 1 item to Breakfast' }).click();
   await expect(page.getByRole('button', { name: 'Edit Banana' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Add food to Breakfast' }).click();
+  const searchDialog = page.getByRole('dialog');
+  await searchDialog.getByRole('button', { name: /Search or scan a barcode/ }).click();
+  await searchDialog.getByRole('textbox', { name: 'Search foods' }).fill('paneer bhurji');
+  await expect(searchDialog.getByText('Shared library', { exact: true })).toBeVisible();
+  await expect(
+    searchDialog.getByRole('button', { name: /^Paneer bhurji/ })
+  ).toBeVisible();
+  await searchDialog.getByRole('button', { name: /^Paneer bhurji/ }).click();
+  await searchDialog.getByRole('button', { name: 'Add to Breakfast' }).click();
+  await expect(page.getByRole('button', { name: 'Edit Paneer bhurji' })).toBeVisible();
 
   await page.getByRole('link', { name: 'Ask the AI coach' }).click();
   await expect(page.getByRole('heading', { name: 'Ask CalAI' })).toBeVisible();
