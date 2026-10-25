@@ -83,7 +83,9 @@
     }
 
     .shell {
-      width: min(100% - 40px, 1040px);
+      width: calc(100% - 40px);
+      max-width: 1040px;
+      min-width: 0;
       margin-inline: auto;
     }
 
