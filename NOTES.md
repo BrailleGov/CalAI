@@ -1,7 +1,7 @@
 # CalAI — handoff notes
 
 Last updated: 2026-10-25
-Release: **v0.3.0 alpha (live); v0.3.1 in progress**
+Release: **v0.3.1 alpha (live)**
 Live: <https://braillegov.github.io/CalAI/>
 API: <https://calai-api.braille.workers.dev> (account `6e8aa19c29eece010d2447b7f666632b`)
 Repo: <https://github.com/BrailleGov/CalAI>
@@ -77,7 +77,7 @@ v0.3.0 (live):
 - **Tests.** 86 unit tests and 34 local-first Playwright tests pass (plus the configured-AI
   test against a mocked Worker); axe 0 A/AA violations on new screens.
 
-v0.3.1 (in progress):
+v0.3.1 (live):
 
 - **Brave Search.** `BRAVE_SEARCH_API_KEY` is a Worker secret. Branded/package/restaurant
   items return an optional `webQuery`; the Worker searches Brave (24-hour KV cache), refines up

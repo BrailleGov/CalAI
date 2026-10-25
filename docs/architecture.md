@@ -731,7 +731,7 @@ is deployed with the Worker, AI, SMS, cloud, and push tiers enabled.
   the v0.3 bundle.
 - Version: v0.3.0 (deployed 2026-10-25).
 
-## 18. v0.3.1 UI and shared-food update (2026-10-25)
+## 18. v0.3.1 web grounding, hardening, and UI update (2026-10-25)
 
 - Camera-first logging: meal `+` opens AI photo logging with a persistent manual
   search/barcode link; the quick-log row leads with Camera. Photo logging is on by default,
@@ -765,4 +765,4 @@ is deployed with the Worker, AI, SMS, cloud, and push tiers enabled.
   test against a mocked Worker (35 total); bundle initial JS 125.6 KB gzip, CSS 9.6 KB gzip,
   precache 898.2 KiB. The Worker deployed with `webSearch: true`; live branded parse and
   discovery returned `webSources`, and discovery rows returned `web: true`.
-- Version: v0.3.1 (Worker deployed 2026-10-25; Pages build pending).
+- Version: v0.3.1 (Worker and Pages deployed 2026-10-25).

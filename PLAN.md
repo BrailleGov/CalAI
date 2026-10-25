@@ -1,6 +1,6 @@
 # CalAI — product plan
 
-Status: **v0.3.0 is live (alpha); v0.3.1 hardening and Brave web grounding are in progress.**
+Status: **v0.3.1 is live (alpha): hardening and Brave web grounding are deployed.**
 The Cloudflare Worker is deployed with KV, D1, all runtime secrets, and VAPID keys, and the
 Pages build injects `VITE_API_BASE`. AI, the shared food library, SMS, cloud backup, and cached
 search are active; push endpoints are dormant and now require device auth. Remaining release
@@ -234,7 +234,7 @@ overflow; initial JS 117.1 KB gzip, CSS 8.9 KB gzip. Live deployment checks list
 passed, including a real banana photo. Textbelt accepted one consented test text; quota moved
 193 → 192. Deployment smoke rows were removed from D1 afterwards.
 
-### v0.3.1 — Web grounding and hardening (in progress)
+### v0.3.1 — Web grounding and hardening (shipped)
 
 - **Brave Search grounding.** The Worker accepts a model-chosen `webQuery` for branded,
   packaged, or restaurant items and refines nutrition with current public snippets. Food

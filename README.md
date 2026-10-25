@@ -2,7 +2,7 @@
 
 A mobile-first calorie tracker that installs from the web and works offline.
 
-**v0.3.1 alpha (in progress; v0.3.0 remains live)** — <https://braillegov.github.io/CalAI/> · API:
+**v0.3.1 alpha (live)** — <https://braillegov.github.io/CalAI/> · API:
 <https://calai-api.braille.workers.dev>
 
 ## What works
@@ -254,7 +254,7 @@ For local Worker development, `worker/.dev.vars` is gitignored. Wrangler loads i
 
 Every push to `main` triggers `.github/workflows/deploy.yml`:
 
-1. `npm ci`, unit tests, typecheck, local-first production build.
+1. `npm ci`, unit tests, client typecheck, `worker` install + typecheck, local-first build.
 2. Install Playwright Chromium and run the committed E2E suite (34 tests).
 3. Rebuild with `VITE_API_BASE` and `VITE_VAPID_PUBLIC_KEY`, run the configured-AI suite.
 4. Upload `dist/` and deploy through GitHub Actions Pages.
