@@ -192,7 +192,8 @@ Deployment completed on 2026-10-25:
   encrypted snapshot PUT/GET/DELETE (404 after delete), DeepSeek text parse, coach answer with
   a stated 7-day window, recipe generation, and vision on a real banana photo. A browser run
   against the production bundle logged AI-parsed items, enabled and deleted cloud backup, and
-  received a grounded coach reply.
+  received a grounded coach reply. The live Pages build was rechecked in a fresh browser:
+  `/health` passed CORS and the AI, cloud, and SMS configured states rendered correctly.
 - Fixed a router bug where handler promises were returned without `await`, so typed errors
   escaped the catch and surfaced as Cloudflare 1101 errors. All handlers now await.
 

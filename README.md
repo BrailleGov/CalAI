@@ -269,7 +269,10 @@ The Worker deploys separately from `worker/` with `npx wrangler deploy`. See
   DeepSeek text parse, coach answer with a 7-day window, recipe generation, and vision on a
   banana photo all returned valid structured output through the deployed Worker. A browser run
   against the production bundle logged AI-parsed items, enabled and deleted cloud backup, and
-  received a grounded coach reply. Test rows were deleted from D1 afterwards.
+  received a grounded coach reply. The live Pages build was also checked in a fresh browser:
+  `/health` passed CORS from the Pages origin, and the AI consent gate, cloud-backup controls,
+  and SMS phone field appeared with no “not configured” notices. Test rows were deleted from
+  D1 afterwards.
 
 ## Next
 

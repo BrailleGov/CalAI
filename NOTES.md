@@ -156,6 +156,10 @@ npx wrangler dev
   - A browser run against the production bundle completed onboarding, parsed and logged
     “one banana and two eggs” via AI, enabled and deleted encrypted cloud backup, and received
     a grounded coach reply (“0 diary entries … last 7 days”).
+  - The live Pages build loaded the v0.3 onboarding in a fresh browser; from the Pages origin
+    `/health` returned all capabilities true (CORS OK), settings showed active cloud-backup
+    controls and the SMS phone field with no “not configured” notices, and the AI sheet showed
+    the consent gate.
   - Found and fixed a routing bug: handlers were returned without `await`, so thrown
     `AiError`/`SyncError`/`SmsServiceError` values escaped the router catch and became Cloudflare
     error 1101. All route handlers now `await` and error statuses map correctly (verified with a
