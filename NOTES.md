@@ -17,7 +17,8 @@ for the technical design before starting work.
 - v0.3 adds expanded onboarding/personalization, ≈220 seed foods with categories, camera-first
   AI photo and text logging, an AI coach, a curated/AI recipe book, a shared AI food library,
   encrypted D1 cloud backup, and outbound-only Textbelt SMS reminders (the only reminder
-  channel).
+  channel). New installs default to dark theme, imperial body units (lb/ft, metric storage),
+  and `en-CA` formatting.
 - The Cloudflare Worker is **deployed** with KV + D1, migrations `0001`/`0002` applied, and all
   runtime secrets set (DeepSeek, Textbelt, `DATA_ENC_KEY`, VAPID). `/health` reports
   `search/ai/sharedFoods/sync/sms/push` all true.
@@ -148,8 +149,8 @@ npx wrangler dev
   barcode, AI result sheet, and assistant.
 - Layout: no horizontal overflow at 360/390 px on Today, Foods, Recipes, Discover, History,
   Settings, and Assistant.
-- Bundle: initial JS 117.4 KB gzip + 2.4 KB workbox window; CSS 9.4 KB gzip; lazy ZXing chunk
-  108.7 KB gzip. PWA precache 17 entries (874.1 KiB).
+- Bundle: initial JS 117.5 KB gzip + 2.4 KB workbox window; CSS 9.4 KB gzip; lazy ZXing chunk
+  108.7 KB gzip. PWA precache 17 entries (874.3 KiB).
 - Deployed Worker verification (2026-10-25, HTTP through
   `https://calai-api.braille.workers.dev`):
   - `/health` returned `search/ai/sharedFoods/sync/sms/push` all true; CORS returned the Pages

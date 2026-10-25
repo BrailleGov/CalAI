@@ -1,3 +1,5 @@
+import { APP_LOCALE } from './locale';
+
 const DAY_KEY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 const pad = (value: number) => String(value).padStart(2, '0');
@@ -57,7 +59,7 @@ export function formatDayLong(key: string): string {
   const date = fromDayKey(key);
   if (!date) return key;
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     weekday: 'long',
     month: 'short',
     day: 'numeric'
@@ -68,7 +70,7 @@ export function formatDayMedium(key: string): string {
   const date = fromDayKey(key);
   if (!date) return key;
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     month: 'short',
     day: 'numeric'
   }).format(date);
@@ -78,14 +80,14 @@ export function formatWeekday(key: string): string {
   const date = fromDayKey(key);
   if (!date) return key;
 
-  return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date);
+  return new Intl.DateTimeFormat(APP_LOCALE, { weekday: 'short' }).format(date);
 }
 
 export function formatWeekdayNarrow(key: string): string {
   const date = fromDayKey(key);
   if (!date) return key;
 
-  return new Intl.DateTimeFormat(undefined, { weekday: 'narrow' }).format(date);
+  return new Intl.DateTimeFormat(APP_LOCALE, { weekday: 'narrow' }).format(date);
 }
 
 export function lastNDayKeys(count: number, end = todayKey()): string[] {

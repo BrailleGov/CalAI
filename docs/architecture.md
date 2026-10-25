@@ -309,7 +309,10 @@ on its opening screen forever. v0.1.1 removes that failure mode:
 - A 1200 kcal floor is enforced with a non-judgemental note; manual targets may still be
   lower only with a warning. This is a safety guardrail, not medical advice.
 - Units: metric internally (kg, cm, ml); imperial is presentation-only for body stats,
-  weight, water, and portions.
+  weight, water, and portions. Defaults are dark theme, imperial body units (lb/ft), and the
+  `en-CA` presentation locale; users can switch to metric or system theme.
+- Onboarding persists the chosen units into Settings on completion. `DEFAULT_SETTINGS` is the
+  single source for theme, units, and the water goal.
 
 ## 5. Food data
 
@@ -728,7 +731,7 @@ is deployed with the Worker, AI, SMS, cloud, and push tiers enabled.
   the user reviews and edits before saving.
 - Verification: 86 unit tests; 34 local-first Playwright tests plus the configured-AI test
   against a mocked Worker (35 total); axe 0 A/AA violations; no horizontal overflow at 360/390
-  px. Bundle: initial JS 117.4 KB gzip, CSS 9.4 KB gzip, precache 874.1 KiB.
+  px. Bundle: initial JS 117.5 KB gzip, CSS 9.4 KB gzip, precache 874.3 KiB.
 - Live Worker smoke test: `POST /v1/foods/discover` for “paneer” returned six foods, stored
   them, and `GET /v1/foods/library?q=paneer` returned the same six; a second discover call
   returned `cached: true` without a model call. `/health` reports `sharedFoods: true`.

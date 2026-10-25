@@ -1,8 +1,10 @@
-const numberFormatter = new Intl.NumberFormat(undefined, {
+import { APP_LOCALE } from './locale';
+
+const numberFormatter = new Intl.NumberFormat(APP_LOCALE, {
   maximumFractionDigits: 0
 });
 
-const decimalFormatter = new Intl.NumberFormat(undefined, {
+const decimalFormatter = new Intl.NumberFormat(APP_LOCALE, {
   maximumFractionDigits: 2
 });
 

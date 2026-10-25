@@ -16,6 +16,7 @@ import {
   ACTIVITY_LABELS,
   CUISINE_OPTIONS,
   DEFAULT_PREFERENCES,
+  DEFAULT_SETTINGS,
   DIET_LABELS,
   DIET_PATTERNS,
   GOAL_LABELS,
@@ -88,7 +89,7 @@ export function Onboarding() {
   const [sex, setSex] = useState<Sex>('unspecified');
   const [age, setAge] = useState('');
   const [activity, setActivity] = useState<ActivityLevel>('moderate');
-  const [units, setUnits] = useState<Units>('metric');
+  const [units, setUnits] = useState<Units>(DEFAULT_SETTINGS.units);
   const [heightCm, setHeightCm] = useState('');
   const [weightKg, setWeightKg] = useState('');
   const [feet, setFeet] = useState('5');
@@ -344,7 +345,8 @@ export function Onboarding() {
         ...preferences,
         avoidIngredients: parseList(avoidText),
         aiConsentAt: aiConsent || preferences.aiConsentAt ? Date.now() : null
-      }
+      },
+      { units }
     );
     window.location.hash = '#/today';
     window.scrollTo({ top: 0 });

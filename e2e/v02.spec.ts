@@ -132,26 +132,26 @@ test.describe('v0.2 features', () => {
     await completeOnboarding(page);
     await expect(page.getByRole('heading', { name: 'Water' })).toBeVisible();
 
-    await page.getByRole('button', { name: '+ 250 ml' }).click();
-    await expect(page.getByText('250 ml / 2,000 ml')).toBeVisible();
+    await page.getByRole('button', { name: '+ 8 oz' }).click();
+    await expect(page.getByText('8 oz / 68 oz')).toBeVisible();
     await page.reload();
-    await expect(page.getByText('250 ml / 2,000 ml')).toBeVisible();
+    await expect(page.getByText('8 oz / 68 oz')).toBeVisible();
 
     await page.getByRole('button', { name: 'Undo last' }).click();
-    await expect(page.getByText('0 ml / 2,000 ml')).toBeVisible();
+    await expect(page.getByText('0 oz / 68 oz')).toBeVisible();
   });
 
   test('logs weight and shows the 7-day average', async ({ page }) => {
     await completeOnboarding(page);
     await page.getByRole('link', { name: 'History', exact: true }).click();
 
-    await page.getByLabel('Today (kg)').fill('72.5');
+    await page.getByLabel('Today (lb)').fill('160');
     await page.getByRole('button', { name: 'Log weight' }).click();
-    await expect(page.getByText('72.5 kg').first()).toBeVisible();
+    await expect(page.getByText('160 lb').first()).toBeVisible();
     await expect(page.getByText('7-day average').first()).toBeVisible();
 
     await page.reload();
-    await expect(page.getByText('72.5 kg').first()).toBeVisible();
+    await expect(page.getByText('160 lb').first()).toBeVisible();
   });
 
   test('shows SMS-only reminders and no in-app reminder controls', async ({ page }) => {

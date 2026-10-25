@@ -17,14 +17,14 @@ export async function completeOnboarding(
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'A few numbers.' })).toBeVisible();
 
-  if (options.units === 'imperial') {
-    await page.getByRole('button', { name: 'Imperial' }).click();
-    await page.getByLabel('Age').fill('34');
+  const units = options.units ?? 'imperial';
+  await page.getByRole('button', { name: units === 'imperial' ? 'Imperial' : 'Metric' }).click();
+  await page.getByLabel('Age').fill('34');
+  if (units === 'imperial') {
     await page.getByLabel('Height in feet').fill('5');
     await page.getByLabel('Height in inches').fill('9');
     await page.getByRole('textbox', { name: /^Weight lb$/ }).fill('170');
   } else {
-    await page.getByLabel('Age').fill('34');
     await page.getByLabel('Height').fill('175');
     await page.getByRole('textbox', { name: /^Weight kg$/ }).fill('72');
   }

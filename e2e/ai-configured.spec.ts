@@ -17,8 +17,9 @@ async function onboardWithAi(page: import('@playwright/test').Page) {
   await gotoApp(page);
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('Age').fill('34');
-  await page.getByLabel('Height').fill('175');
-  await page.getByRole('textbox', { name: /^Weight kg$/ }).fill('72');
+  await page.getByLabel('Height in feet').fill('5');
+  await page.getByLabel('Height in inches').fill('9');
+  await page.getByRole('textbox', { name: /^Weight lb$/ }).fill('170');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('switch', { name: /^Photo logging/ }).check();
   await page.getByRole('switch', { name: /^AI coach/ }).check();

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en-CA" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -23,7 +23,7 @@
           var stored = localStorage.getItem('calai-theme');
           if (stored === 'light' || stored === 'dark') {
             resolved = stored;
-          } else {
+          } else if (stored === 'system') {
             resolved = window.matchMedia('(prefers-color-scheme: light)').matches
               ? 'light'
               : 'dark';

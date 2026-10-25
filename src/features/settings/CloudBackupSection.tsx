@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { getPersistedData, useAppStore } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast';
+import { APP_LOCALE } from '../../lib/locale';
 import {
   SYNC_CONFIGURED,
   SyncError,
@@ -13,7 +14,7 @@ import {
 
 function formatSynced(value: number | null): string {
   if (!value) return 'Never';
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(new Date(value));

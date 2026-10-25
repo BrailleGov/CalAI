@@ -4,6 +4,7 @@ import {
   DEFAULT_CLOUD_SYNC,
   DEFAULT_PREFERENCES,
   DEFAULT_REMINDER_SETTINGS,
+  DEFAULT_SETTINGS,
   DEFAULT_SMS,
   SCHEMA_VERSION
 } from '../types';
@@ -44,7 +45,7 @@ function createInitialData(): PersistedData {
       ...DEFAULT_REMINDER_SETTINGS,
       items: DEFAULT_REMINDER_SETTINGS.items.map((item) => ({ ...item }))
     },
-    settings: { theme: 'system', units: 'metric', waterGoalMl: 2000 },
+    settings: { ...DEFAULT_SETTINGS },
     preferences: {
       ...DEFAULT_PREFERENCES,
       avoidIngredients: [],
@@ -76,7 +77,8 @@ type Actions = {
   completeOnboarding: (
     profile: Profile,
     targets: Targets,
-    preferences?: Partial<Preferences>
+    preferences?: Partial<Preferences>,
+    settings?: Partial<Settings>
   ) => void;
   updateProfile: (profile: Profile) => void;
   updateTargets: (targets: Targets) => void;
@@ -124,11 +126,12 @@ export const useAppStore = create<AppStore>()(
     (set) => ({
       ...createInitialData(),
 
-      completeOnboarding: (profile, targets, preferences) =>
+      completeOnboarding: (profile, targets, preferences, settings) =>
         set((state) => ({
           profile,
           targets,
           onboarded: true,
+          settings: settings ? { ...state.settings, ...settings } : state.settings,
           preferences: {
             ...state.preferences,
             ...preferences,

@@ -40,6 +40,9 @@ A mobile-first calorie tracker that installs from the web and works offline.
 - Calorie ring, macros, 7-day chart, 30-day history, light/dark/system themes, JSON export
   and validated import, installable offline PWA.
 
+**Defaults:** dark theme, imperial body units (lb/ft) with metric stored internally, and
+`en-CA` date/time formatting. Onboarding and Settings keep both theme and units editable.
+
 **Deployment note:** the static app is deployed by GitHub Pages and the Cloudflare Worker is
 live. The Pages build injects `VITE_API_BASE`, so AI, the shared food library, encrypted cloud
 backup, SMS, and server-cached search are active. The diary is still local-first and fully
@@ -269,9 +272,9 @@ The Worker deploys separately from `worker/` with `npx wrangler deploy`. See
   assistant, and both themes.
 - Layout: no horizontal overflow at 360/390 px on Today, Foods, Recipes, History, Settings,
   Discover, and Assistant.
-- Bundle: initial JS 117.4 KB gzip + 2.4 KB workbox window; CSS 9.4 KB gzip; lazy ZXing
+- Bundle: initial JS 117.5 KB gzip + 2.4 KB workbox window; CSS 9.4 KB gzip; lazy ZXing
   chunk 108.7 KB gzip. Under the 200 KB initial-JS budget.
-- PWA precache: 17 entries, 874.1 KiB. Service worker: injectManifest with navigation fallback
+- PWA precache: 17 entries, 874.3 KiB. Service worker: injectManifest with navigation fallback
   and dormant push handlers.
 - Live deployment verification (2026-10-25): `/health` reports
   search/AI/sharedFoods/sync/SMS/push true; “paneer” discovery returned and stored six AI foods

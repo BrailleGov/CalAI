@@ -413,6 +413,8 @@ Settled for v0.3:
 - Cloud snapshots and SMS phone numbers use AES-GCM with a server-side key. SMS is outbound
   only via Textbelt, consent-gated, deduped, and excluded from backups.
 - Recipe book stays lightweight and is built from the same seed foods as the diary.
+- Defaults are dark theme, imperial body units (lb/ft with metric storage), and `en-CA`
+  formatting. Units and theme remain user-editable during onboarding and in Settings.
 
 Pending before their releases:
 

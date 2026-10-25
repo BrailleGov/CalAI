@@ -138,6 +138,13 @@ export type Settings = {
   waterGoalMl: number;
 };
 
+/** Canadian defaults: dark theme and pounds/feet for body measurements. */
+export const DEFAULT_SETTINGS: Settings = {
+  theme: 'dark',
+  units: 'imperial',
+  waterGoalMl: 2000
+};
+
 export const TRACKING_STYLES = ['quick', 'detailed'] as const;
 export type TrackingStyle = (typeof TRACKING_STYLES)[number];
 

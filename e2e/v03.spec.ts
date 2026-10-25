@@ -37,8 +37,9 @@ test.describe('v0.3 personalization and AI surfaces', () => {
 
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByLabel('Age').fill('34');
-    await page.getByLabel('Height').fill('175');
-    await page.getByRole('textbox', { name: /^Weight kg$/ }).fill('72');
+    await page.getByLabel('Height in feet').fill('5');
+    await page.getByLabel('Height in inches').fill('9');
+    await page.getByRole('textbox', { name: /^Weight lb$/ }).fill('170');
     await expect(page.getByRole('switch', { name: /Set a target weight/ })).toBeVisible();
     await page.getByRole('button', { name: 'Continue' }).click();
 

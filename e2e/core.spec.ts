@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { completeOnboarding, logSeedFood, openAddFood } from './helpers';
 
 test.describe('core diary flows', () => {
-  test('onboards with metric units and shows a usable diary', async ({ page }) => {
+  test('defaults to dark theme and imperial units', async ({ page }) => {
     await completeOnboarding(page);
     await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
     await expect(page.getByText('Nothing logged yet.', { exact: false })).toBeVisible();
@@ -10,14 +10,34 @@ test.describe('core diary flows', () => {
       'aria-current',
       'page'
     );
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'imperial', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    const stats = page.getByRole('region', { name: 'Your stats' });
+    await expect(stats.getByText('5′ 9″')).toBeVisible();
+    await expect(stats.getByText('170 lb')).toBeVisible();
+
+    const stored = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('calai:v1') ?? '{}')
+    );
+    expect(stored.state.profile.heightCm).toBeCloseTo(175.3, 1);
+    expect(stored.state.profile.weightKg).toBeCloseTo(77.1, 1);
   });
 
-  test('onboards with imperial units and converts to metric storage', async ({ page }) => {
-    await completeOnboarding(page, { units: 'imperial' });
+  test('onboards with metric units when selected', async ({ page }) => {
+    await completeOnboarding(page, { units: 'metric' });
     await page.getByRole('link', { name: 'Settings', exact: true }).click();
     const stats = page.getByRole('region', { name: 'Your stats' });
     await expect(stats.getByText('175 cm')).toBeVisible();
-    await expect(stats.getByText('77.1 kg')).toBeVisible();
+    await expect(stats.getByText('72 kg')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'metric', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
   });
 
   test('logs a seeded food, updates totals, and survives a reload', async ({ page }) => {
