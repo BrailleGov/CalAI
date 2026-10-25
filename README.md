@@ -100,8 +100,8 @@ source back to a branch. The deployment takes about a minute.
 
 ## Quality bar
 
-- Lighthouse mobile (local production build): Performance 99, Accessibility 100,
-  Best Practices 100. SEO 60 is expected while `noindex` is set.
+- Lighthouse mobile (live deployment): Performance 100, Accessibility 100, Best Practices
+  100. SEO 60 is expected while `noindex` is set.
 - 27 unit tests plus browser smoke coverage for onboarding, logging, editing, deletion,
   export/import, offline reload, reset, validation, imperial units, and theme persistence.
 - Storage recovery tests: blocked IndexedDB, blocked localStorage, corrupt local state, and a

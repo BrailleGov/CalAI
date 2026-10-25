@@ -86,7 +86,7 @@ v0.1 acceptance:
 Verified on the live deployment: 27 unit tests, browser smoke tests for onboarding, logging,
 editing, deleting, export/import, offline reload, reset, and validation; no horizontal
 overflow at 360 or 390 px; axe-core reports 0 WCAG A/AA violations across screens in both
-themes; Lighthouse mobile 99 performance / 100 accessibility / 100 best practices (SEO is
+themes; Lighthouse mobile 100 performance / 100 accessibility / 100 best practices (SEO is
 intentionally 60 while the alpha carries `noindex`). v0.1.1 adds storage recovery tests:
 blocked IndexedDB, blocked localStorage, corrupt state, and migration of a seeded v0.1.0
 IndexedDB diary. Unit tests: 27.

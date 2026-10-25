@@ -392,7 +392,7 @@ v0.1.0 shipped on 2026-10-24; v0.1.1 hardens storage. The acceptance list in
   icons; service worker registers and controls the page on the live HTTPS origin.
 - axe-core: 0 WCAG 2.1 A/AA violations across onboarding, diary, add/edit sheets, foods,
   history, and settings in dark and light themes.
-- Lighthouse mobile (production build): Performance 99, Accessibility 100, Best Practices
+- Lighthouse mobile (live deployment): Performance 100, Accessibility 100, Best Practices
   100, SEO 60 (intentional `noindex` during alpha).
 - Bundle: initial JS 73.3 KB gzip, CSS 5.8 KB gzip.
 - Live: <https://braillegov.github.io/CalAI/>, custom 404 served, HTTP redirects to HTTPS.
