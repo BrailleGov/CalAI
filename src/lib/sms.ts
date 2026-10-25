@@ -1,5 +1,5 @@
 import type { Reminder, ReminderSettings } from '../types';
-import { API_BASE } from './remote';
+import { API_BASE, getDeviceToken } from './remote';
 import { getSyncToken, registerDevice } from './sync';
 
 export const SMS_CONFIGURED = Boolean(API_BASE);
@@ -58,6 +58,7 @@ async function authorizedFetch(
     ...init,
     headers: {
       ...(init.headers ?? {}),
+      'X-CalAI-Device': getDeviceToken(),
       Authorization: `Bearer ${token}`
     }
   }).catch(() => null);
