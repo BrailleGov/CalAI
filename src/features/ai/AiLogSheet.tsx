@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast';
 import { Sheet } from '../../components/Sheet';
 import { ToggleRow } from '../../components/ToggleRow';
+import { PhotoSourcePicker } from '../../components/PhotoSourcePicker';
 import { createId } from '../../lib/id';
 import { formatDecimal, formatNumber } from '../../lib/format';
 import { normalizeText } from '../../lib/search';
@@ -147,7 +148,6 @@ export function AiLogSheet({
   const [saveToLibrary, setSaveToLibrary] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const abortRef = useRef<AbortController | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const aiConsent = preferences.aiConsentAt !== null;
   const canUseAi = AI_CONFIGURED && aiConsent;
@@ -508,19 +508,6 @@ export function AiLogSheet({
 
       {mode === 'photo' ? (
         <section className="ai-photo" aria-label="Meal photo">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="visually-hidden"
-            aria-label="Choose a meal photo"
-            onChange={(event) => {
-              const chosen = event.target.files?.[0] ?? null;
-              setFile(chosen);
-              resetResults();
-            }}
-          />
           {previewUrl ? (
             <div className="ai-preview">
               <img src={previewUrl} alt="Selected meal" />
@@ -537,15 +524,13 @@ export function AiLogSheet({
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              className="ai-dropzone"
-              onClick={() => fileRef.current?.click()}
-            >
-              <IconCamera size={26} />
-              <strong>Take or choose a photo</strong>
-              <span>Downscaled on this device. Location metadata is stripped.</span>
-            </button>
+            <PhotoSourcePicker
+              disabled={status === 'loading'}
+              onSelect={(chosen) => {
+                setFile(chosen);
+                resetResults();
+              }}
+            />
           )}
 
           <div className="ai-actions">
@@ -558,13 +543,15 @@ export function AiLogSheet({
               {status === 'loading' ? 'Analysing…' : 'Analyse photo'}
             </button>
             {file ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => fileRef.current?.click()}
-              >
-                Change photo
-              </button>
+              <PhotoSourcePicker
+                variant="button"
+                label="Change photo"
+                disabled={status === 'loading'}
+                onSelect={(chosen) => {
+                  setFile(chosen);
+                  resetResults();
+                }}
+              />
             ) : null}
           </div>
           <p className="fine-print">

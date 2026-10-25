@@ -10,7 +10,8 @@ import {
 } from '../../lib/ai';
 import type { AiFoodItem } from '../../lib/ai';
 import { AiConsentInline } from '../../components/AiConsentInline';
-import { IconCamera, IconSparkles } from '../../components/icons';
+import { PhotoSourcePicker } from '../../components/PhotoSourcePicker';
+import { IconSparkles } from '../../components/icons';
 
 export type AiFoodDraft = {
   name: string;
@@ -29,7 +30,6 @@ function labelFor(item: AiFoodItem): string {
 
 export function AiFoodAssist({ onApply }: AiFoodAssistProps) {
   const aiConsent = useAppStore((state) => state.preferences.aiConsentAt !== null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [mode, setMode] = useState<'idle' | 'describe'>('idle');
   const [text, setText] = useState('');
@@ -112,29 +112,13 @@ export function AiFoodAssist({ onApply }: AiFoodAssistProps) {
         />
       ) : (
         <>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="visually-hidden"
-            aria-label="Choose a food photo for AI"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              event.target.value = '';
-              void handlePhoto(file);
-            }}
-          />
-
           <div className="ai-assist-actions">
-            <button
-              type="button"
-              className="btn btn-ghost btn-small"
+            <PhotoSourcePicker
+              variant="small"
+              label="Photo"
               disabled={status === 'loading'}
-              onClick={() => fileRef.current?.click()}
-            >
-              <IconCamera size={15} /> Photo
-            </button>
+              onSelect={(file) => void handlePhoto(file)}
+            />
             <button
               type="button"
               className="btn btn-ghost btn-small"

@@ -191,6 +191,17 @@ test('configured AI UI works against a mocked Worker', async ({ page }) => {
 
   await page.getByRole('button', { name: /^Camera/ }).click();
   const photoDialog = page.getByRole('dialog');
+  await photoDialog.getByRole('button', { name: 'Take or choose a photo' }).click();
+  await expect(photoDialog.getByRole('menuitem', { name: /Camera/ })).toBeVisible();
+  await expect(photoDialog.getByRole('menuitem', { name: /Photo library/ })).toBeVisible();
+  await expect(photoDialog.getByRole('menuitem', { name: /Files/ })).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await expect(photoDialog.getByRole('menuitem', { name: /Photo library/ })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(photoDialog.getByRole('menuitem', { name: /Files/ })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(photoDialog.getByRole('menu')).toHaveCount(0);
+  await expect(photoDialog).toBeVisible();
   await photoDialog
     .getByLabel('Choose a meal photo')
     .setInputFiles(path.resolve('e2e/fixtures/meal.png'));
