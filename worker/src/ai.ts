@@ -1,6 +1,11 @@
 import { base64ToBytes } from './crypto';
 import { consumeQuota, dayKey, monthKey } from './quota';
-import { normalizeSharedFoods, saveSharedFoods, searchSharedFoods } from './sharedFoods';
+import {
+  normalizeFoodName,
+  normalizeSharedFoods,
+  saveSharedFoods,
+  searchSharedFoods
+} from './sharedFoods';
 import type { AiFoodItem, Env, Meal } from './types';
 
 const MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -378,9 +383,13 @@ export async function discoverFoods(
   const inputs = normalizeSharedFoods(parsed.foods, 6);
   const saved = inputs.length > 0 ? await saveSharedFoods(env, query, inputs) : [];
   const seen = new Set(existing.map((food) => food.id));
+  const seenNames = new Set(existing.map((food) => normalizeFoodName(food.name)));
   const foods = [
     ...existing,
-    ...saved.filter((food) => !seen.has(food.id))
+    ...saved.filter(
+      (food) =>
+        !seen.has(food.id) && !seenNames.has(normalizeFoodName(food.name))
+    )
   ];
 
   if (foods.length === 0) {

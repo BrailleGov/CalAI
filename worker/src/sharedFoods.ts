@@ -51,7 +51,7 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function normalized(value: string): string {
+export function normalizeFoodName(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -70,7 +70,7 @@ export function normalizeSharedFoods(value: unknown, limit = 6): SharedFoodInput
     const record = raw as Record<string, unknown>;
     const name = str(record.name, 120);
     if (!name) continue;
-    const key = normalized(name);
+    const key = normalizeFoodName(name);
     if (!key || seen.has(key)) continue;
 
     const kcal = num(record.kcal, 0, 5000);
@@ -124,11 +124,11 @@ export async function saveSharedFoods(
   foods: SharedFoodInput[]
 ): Promise<FoodDTO[]> {
   const now = Date.now();
-  const normalizedQuery = normalized(query).slice(0, 120);
+  const normalizedQuery = normalizeFoodName(query).slice(0, 120);
   const rows: SharedFoodRow[] = [];
 
   for (const food of foods) {
-    const key = `${normalized(food.name)}|${normalized(food.brand ?? '')}|${normalized(
+    const key = `${normalizeFoodName(food.name)}|${normalizeFoodName(food.brand ?? '')}|${normalizeFoodName(
       food.servingLabel
     )}`;
     const id = `ai-${(await sha256Hex(key)).slice(0, 24)}`;
@@ -183,7 +183,7 @@ export async function searchSharedFoods(
   limit = 12
 ): Promise<FoodDTO[]> {
   if (!env.DB) return [];
-  const tokens = normalized(query)
+  const tokens = normalizeFoodName(query)
     .split(' ')
     .filter(Boolean)
     .slice(0, 4);
@@ -209,5 +209,11 @@ export async function searchSharedFoods(
     .bind(...bindings, Math.min(30, Math.max(1, limit)))
     .all<SharedFoodRow>();
 
-  return (result.results ?? []).map(toDto);
+  const seen = new Set<string>();
+  return (result.results ?? []).flatMap((row) => {
+    const key = normalizeFoodName(row.name);
+    if (!key || seen.has(key)) return [];
+    seen.add(key);
+    return [toDto(row)];
+  });
 }
