@@ -38,7 +38,7 @@ jobs:
 
       - name: Install Worker
         working-directory: worker
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Typecheck Worker
         working-directory: worker
